@@ -26,3 +26,17 @@ class Config:
         
     # Veritabanında değişiklik olduğunda sinyal göndermeyi kapat (performans)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Oturum Güvenliği
+    PERMANENT_SESSION_LIFETIME = 1800  # 1 saat hareketsizlikte oturum kapanır (saniye)
+    SESSION_COOKIE_SECURE = False       # Production'da True yap (HTTPS gerekir)
+    SESSION_COOKIE_HTTPONLY = True      # JS ile cookie erişimini engelle
+    SESSION_COOKIE_SAMESITE = 'Lax'    # CSRF koruması
+    REMEMBER_COOKIE_DURATION = False    # Beni hatırla süresi
+
+    # Flask-Session Ayarları
+    SESSION_TYPE = 'filesystem'  # Session'ları sunucuda dosya olarak sakla
+    SESSION_FILE_DIR = os.path.join(os.path.dirname(__file__), 'flask_session')
+    SESSION_PERMANENT = False    # Tarayıcı kapanınca oturum bitsin
+    SESSION_USE_SIGNER = True    # Cookie imzalansın
+    SESSION_KEY_PREFIX = 'pimaks_'

@@ -1,15 +1,10 @@
-import json
 import traceback
-import requests 
-import xml.etree.ElementTree as ET 
-from datetime import datetime, date
-from decimal import Decimal
-from flask import render_template, redirect, url_for, flash, request
-from sqlalchemy import or_, and_
+import threading
+from datetime import datetime, date, timedelta
+from flask import render_template, redirect, url_for, flash, request, current_app, jsonify
+from flask_login import current_user, login_required
+from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
-
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from app import db
 from app.kiralama import kiralama_bp
@@ -18,107 +13,130 @@ from app.kiralama import kiralama_bp
 from app.firmalar.models import Firma
 from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.filo.models import Ekipman
-from app.cari.models import HizmetKaydi 
-
+from app.subeler.models import Sube
+from app.araclar.models import Arac as NakliyeAraci
 from app.kiralama.forms import KiralamaForm
 
-# -------------------------------------------------------------------------
-# YARDIMCI FONKSİYONLAR
-# -------------------------------------------------------------------------
+# Servis Katmanı ve Hata Yönetimi
+from app.services.kiralama_services import KiralamaService, KiralamaKalemiService
+from app.services.base import ValidationError
 
-def get_tcmb_kurlari():
-    """TCMB'den günlük USD ve EUR kurlarını çeker."""
-    rates = {'USD': Decimal('0.00'), 'EUR': Decimal('0.00')}
-    try:
-        url = "https://www.tcmb.gov.tr/kurlar/today.xml"
-        response = requests.get(url, verify=False, timeout=2)
-        if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            usd = root.find("./Currency[@CurrencyCode='USD']/ForexSelling")
-            eur = root.find("./Currency[@CurrencyCode='EUR']/ForexSelling")
-            if usd is not None: rates['USD'] = Decimal(usd.text)
-            if eur is not None: rates['EUR'] = Decimal(eur.text)
-    except: pass
-    return rates
+# --- BELLEK İÇİ ÖNBELLEKLEME (IN-MEMORY CACHE) ---
+_CACHE_DATA = {
+    'subeler': {'data': None, 'last_update': None},
+    'aktif_araclar': {'data': None, 'last_update': None}
+}
 
-def guncelle_cari_toplam(kiralama_id):
-    """Kiralama güncellendiğinde veya sonlandırıldığında cariyi senkronize eder."""
-    try:
-        kiralama = Kiralama.query.get(kiralama_id)
-        if not kiralama: return
-        
-        cari_kayit = HizmetKaydi.query.filter_by(fatura_no=kiralama.kiralama_form_no, yon='giden').first()
-        
-        toplam_gelir = Decimal('0.00')
-        for kalem in kiralama.kalemler:
-            if not (kalem.kiralama_baslangici and kalem.kiralama_bitis): continue
-            gun = max((kalem.kiralama_bitis - kalem.kiralama_baslangici).days + 1, 1)
-            toplam_gelir += (kalem.kiralama_brm_fiyat * gun) + (kalem.nakliye_satis_fiyat or 0)
+# DARBOĞAZ ÖNLEME: Her veri kümesi için ayrı kilit (lock) tanımlandı.
+# Böylece şube güncellenirken araç listesi etkilenmez.
+_SUBE_CACHE_LOCK = threading.Lock()
+_ARAC_CACHE_LOCK = threading.Lock()
 
-        if cari_kayit:
-            cari_kayit.tutar = toplam_gelir
-            db.session.commit()
-    except Exception as e:
-        print(f"Cari hatası: {e}")
+_CACHE_TIMEOUT_MINUTES = 60 
 
-def populate_kiralama_form_choices(form, kiralama_objesi=None, include_ids=None):
-    """Tüm SelectField seçeneklerini form nesnesine enjekte eder."""
+def get_cached_subeler():
+    """Şubeleri thread-safe ve bağımsız bir kilitle bellekten getirir."""
+    now = datetime.now()
+    cache = _CACHE_DATA['subeler']
+    
+    # 1. Hızlı Okuma
+    if cache['data'] is not None and (now - cache['last_update']) < timedelta(minutes=_CACHE_TIMEOUT_MINUTES):
+        return cache['data']
+
+    # 2. Kaynağa Özel Kilit
+    with _SUBE_CACHE_LOCK:
+        if cache['data'] is None or (datetime.now() - cache['last_update']) > timedelta(minutes=_CACHE_TIMEOUT_MINUTES):
+            try:
+                cache['data'] = Sube.query.all()
+                cache['last_update'] = datetime.now()
+            except Exception as e:
+                current_app.logger.error(f"Sube Cache Hatası: {e}")
+                return cache['data'] or []
+    return cache['data']
+
+def get_cached_aktif_araclar():
+    """Aktif araçları thread-safe ve bağımsız bir kilitle bellekten getirir."""
+    now = datetime.now()
+    cache = _CACHE_DATA['aktif_araclar']
+    
+    if cache['data'] is not None and (now - cache['last_update']) < timedelta(minutes=_CACHE_TIMEOUT_MINUTES):
+        return cache['data']
+
+    with _ARAC_CACHE_LOCK:
+        if cache['data'] is None or (datetime.now() - cache['last_update']) > timedelta(minutes=_CACHE_TIMEOUT_MINUTES):
+            try:
+                cache['data'] = NakliyeAraci.query.filter_by(is_active=True).all()
+                cache['last_update'] = datetime.now()
+            except Exception as e:
+                current_app.logger.error(f"Arac Cache Hatası: {e}")
+                return cache['data'] or []
+    return cache['data']
+
+def populate_kiralama_form_choices(form, include_ids=None):
+    """
+    Formdaki tüm SelectField alanlarını veritabanından dinamik olarak doldurur.
+    """
     if include_ids is None: include_ids = []
     
-    musteriler = Firma.query.filter_by(is_musteri=True, is_active=True).order_by(Firma.firma_adi).all()
+    # 1. Ana Müşteri ve Tedarikçi Listeleri (Dahili firmalar gizlendi)
+    musteriler = Firma.query.filter(
+        Firma.is_musteri == True, 
+        Firma.is_active == True,
+        Firma.firma_adi.notin_(['DAHİLİ İŞLEMLER', 'Dahili Kasa İşlemleri'])
+    ).order_by(Firma.firma_adi).all()
     form.firma_musteri_id.choices = [(0, '--- Müşteri Seçiniz ---')] + [(f.id, f.firma_adi) for f in musteriler]
-    
-    tedarikciler = Firma.query.filter_by(is_tedarikci=True, is_active=True).order_by(Firma.firma_adi).all()
+
+    tedarikciler = Firma.query.filter(
+        Firma.is_tedarikci == True, 
+        Firma.is_active == True,
+        Firma.firma_adi.notin_(['DAHİLİ İŞLEMLER', 'Dahili Kasa İşlemleri'])
+    ).order_by(Firma.firma_adi).all()
     ted_choices = [(0, '--- Tedarikçi Seçiniz ---')] + [(f.id, f.firma_adi) for f in tedarikciler]
     
+    # 2. Makine Parkı (Pimaks Filosu) - Detaylandırılmış Etiketler Eklendi
     filo_query = Ekipman.query.filter(
         Ekipman.firma_tedarikci_id.is_(None),
         or_(Ekipman.calisma_durumu == 'bosta', Ekipman.id.in_(include_ids))
     ).order_by(Ekipman.kod).all()
     
-    pimaks_choices = [(0, '--- Seçiniz ---')] + [(e.id, f"{e.kod} ({e.tipi})") for e in filo_query]
+    # KOD | TİP (Yükseklik m - Kapasite kg) formatı uygulandı
+    pimaks_choices = [(0, '--- Seçiniz ---')] + [
+        (e.id, f"{e.kod} | {e.tipi} ({e.calisma_yuksekligi}m - {e.kaldirma_kapasitesi}kg)") 
+        for e in filo_query
+    ]
 
-    for subform in form.kalemler:
-        f = subform.form
+    # 3. Nakliye Araçları (Cache destekli)
+    arac_choices = [(0, '--- Araç Seçiniz ---')] + [(a.id, f"{a.plaka} - {a.arac_tipi}") for a in get_cached_aktif_araclar()]
+
+    # 4. Kalemler Listesi Doldurma
+    if not form.kalemler.entries:
+        form.kalemler.append_entry()
+
+    for entry in form.kalemler:
+        f = entry.form
         f.ekipman_id.choices = pimaks_choices
         f.harici_ekipman_tedarikci_id.choices = ted_choices
         f.nakliye_tedarikci_id.choices = ted_choices
-        f.nakliye_araci_id.choices = pimaks_choices
-
-# -------------------------------------------------------------------------
-# ROUTES
-# -------------------------------------------------------------------------
+        f.nakliye_araci_id.choices = arac_choices
 
 @kiralama_bp.route('/')
 @kiralama_bp.route('/index')
+@login_required
 def index():
+    """Kiralama ana listesi ve arama."""
     try:
         page = request.args.get('page', 1, type=int)
         q = request.args.get('q', '', type=str)
-        today = date.today() 
         
         query = Kiralama.query.options(
             joinedload(Kiralama.firma_musteri), 
-            joinedload(Kiralama.kalemler).joinedload(KiralamaKalemi.ekipman),
-            joinedload(Kiralama.kalemler).joinedload(KiralamaKalemi.harici_tedarikci)
+            joinedload(Kiralama.kalemler).joinedload(KiralamaKalemi.ekipman)
         )
         
         if q:
             search = f"%{q}%"
             query = query.join(Firma, Kiralama.firma_musteri_id == Firma.id)\
-                         .outerjoin(KiralamaKalemi, Kiralama.id == KiralamaKalemi.kiralama_id)\
-                         .outerjoin(Ekipman, KiralamaKalemi.ekipman_id == Ekipman.id)\
-                         .filter(
-                or_(
-                    Kiralama.kiralama_form_no.ilike(search),
-                    Firma.firma_adi.ilike(search),
-                    Ekipman.kod.ilike(search),
-                    Ekipman.seri_no.ilike(search),
-                    KiralamaKalemi.harici_ekipman_marka.ilike(search),
-                    KiralamaKalemi.harici_ekipman_model.ilike(search),
-                    KiralamaKalemi.harici_ekipman_seri_no.ilike(search)
-                )
-            ).distinct()
+                         .filter(or_(Kiralama.kiralama_form_no.ilike(search), Firma.firma_adi.ilike(search)))
             
         pagination = query.order_by(Kiralama.id.desc()).paginate(page=page, per_page=20)
         
@@ -127,260 +145,226 @@ def index():
             kiralamalar=pagination.items, 
             pagination=pagination, 
             q=q, 
-            kurlar=get_tcmb_kurlari(),
-            today=today
+            kurlar=KiralamaService.get_tcmb_kurlari(),
+            today=date.today(),
+            subeler=get_cached_subeler(),
+            nakliye_araclari=get_cached_aktif_araclar()
         )
     except Exception as e:
-        flash(f"Liste Hatası: {e}", "danger")
-        traceback.print_exc()
-        return render_template('kiralama/index.html', kiralamalar=[], kurlar={}, today=date.today())
+        current_app.logger.error(f"Kiralama Liste Yükleme Hatası: {str(e)}")
+        flash(f"Liste yüklenirken bir hata oluştu.", "danger")
+        return render_template('kiralama/index.html', kiralamalar=[], kurlar={}, today=date.today(), subeler=[])
 
 @kiralama_bp.route('/ekle', methods=['GET', 'POST'])
+@login_required
 def ekle():
-    ekipman_id = request.args.get('ekipman_id', type=int)
+    """Yeni kiralama kaydı oluşturma."""
     form = KiralamaForm()
     
-    ids_in_form = [int(k.ekipman_id.data) for k in form.kalemler if k.ekipman_id.data and int(k.ekipman_id.data) > 0]
-    if ekipman_id: ids_in_form.append(ekipman_id)
-    populate_kiralama_form_choices(form, include_ids=ids_in_form)
+    try:
+        populate_kiralama_form_choices(form)
+    except Exception as e:
+        current_app.logger.error(f"Seçenek doldurma hatası (Ekle): {str(e)}")
+        flash("Seçenek listeleri yüklenemedi. Lütfen sistem yöneticisine başvurun.", "danger")
+        return redirect(url_for('kiralama.index'))
 
+    # --- TCMB KURU VE FORM NUMARASI OTOMATİK DOLDURMA ---
     if request.method == 'GET':
-        kurlar = get_tcmb_kurlari()
-        form.doviz_kuru_usd.data, form.doviz_kuru_eur.data = kurlar['USD'], kurlar['EUR']
-        last = Kiralama.query.order_by(Kiralama.id.desc()).first()
-        form.kiralama_form_no.data = f"PF-{datetime.now().year}/{(last.id + 1 if last else 1):04d}"
-        if ekipman_id: form.kalemler.append_entry({'ekipman_id': ekipman_id})
+        try:
+            kurlar = KiralamaService.get_tcmb_kurlari()
+            form.doviz_kuru_usd.data = kurlar.get('USD', 1.0)
+            if hasattr(form, 'doviz_kuru_eur'):
+                form.doviz_kuru_eur.data = kurlar.get('EUR', 1.0)
+                
+            form.kiralama_form_no.data = KiralamaService.get_next_form_no()
+        except Exception as e:
+            current_app.logger.warning(f"Varsayılan değerler forma basılırken hata: {e}")
+    # ----------------------------------------------------
 
     if form.validate_on_submit():
         try:
-            yeni_kiralama = Kiralama(
-                kiralama_form_no=form.kiralama_form_no.data,
-                firma_musteri_id=form.firma_musteri_id.data,
-                kdv_orani=form.kdv_orani.data,
-                doviz_kuru_usd=form.doviz_kuru_usd.data,
-                doviz_kuru_eur=form.doviz_kuru_eur.data
-            )
-            db.session.add(yeni_kiralama); db.session.flush()
+            actor_id = getattr(current_user, 'id', None)
+            kiralama_data = {
+                'kiralama_form_no': form.kiralama_form_no.data,
+                'firma_musteri_id': form.firma_musteri_id.data,
+                'kdv_orani': form.kdv_orani.data,
+                'doviz_kuru_usd': form.doviz_kuru_usd.data,
+                'doviz_kuru_eur': getattr(form, 'doviz_kuru_eur', form.doviz_kuru_usd).data
+            }
+            kalemler_data = [k_form.data for k_form in form.kalemler]
 
-            toplam_gelir = Decimal('0.00')
-
-            for k_form in form.kalemler:
-                bas, bit = k_form.kiralama_baslangici.data, k_form.kiralama_bitis.data
-                if not (bas and bit): continue
-
-                kalem = KiralamaKalemi(
-                    kiralama_id=yeni_kiralama.id,
-                    kiralama_baslangici=bas,
-                    kiralama_bitis=bit,
-                    kiralama_brm_fiyat=k_form.kiralama_brm_fiyat.data or 0,
-                    kiralama_alis_fiyat=k_form.kiralama_alis_fiyat.data or 0,
-                    nakliye_satis_fiyat=k_form.nakliye_satis_fiyat.data or 0,
-                    nakliye_alis_fiyat=k_form.nakliye_alis_fiyat.data or 0,
-                    sonlandirildi=0
-                )
-
-                if int(k_form.dis_tedarik_ekipman.data or 0) == 1:
-                    kalem.is_dis_tedarik_ekipman = True
-                    kalem.harici_ekipman_marka = k_form.harici_ekipman_marka.data
-                    kalem.harici_ekipman_model = k_form.harici_ekipman_model.data
-                    kalem.harici_ekipman_seri_no = k_form.harici_ekipman_seri_no.data
-                    kalem.harici_ekipman_tedarikci_id = k_form.harici_ekipman_tedarikci_id.data
-                    if kalem.kiralama_alis_fiyat > 0:
-                        gun = max((bit - bas).days + 1, 1)
-                        db.session.add(HizmetKaydi(
-                            firma_id=kalem.harici_ekipman_tedarikci_id, tarih=date.today(),
-                            tutar=(kalem.kiralama_alis_fiyat * gun), yon='gelen',
-                            fatura_no=yeni_kiralama.kiralama_form_no, aciklama=f"Dış Kiralama: {kalem.harici_ekipman_marka}"
-                        ))
-                else:
-                    eid = int(k_form.ekipman_id.data or 0)
-                    if eid > 0:
-                        kalem.ekipman_id = eid
-                        ekip = Ekipman.query.get(eid)
-                        if ekip: ekip.calisma_durumu = 'kirada'
-
-                if int(k_form.dis_tedarik_nakliye.data or 0) == 1:
-                    kalem.is_harici_nakliye, kalem.is_oz_mal_nakliye = True, False
-                    kalem.nakliye_tedarikci_id = k_form.nakliye_tedarikci_id.data
-                else:
-                    kalem.is_oz_mal_nakliye = True
-                    arac_id = int(k_form.nakliye_araci_id.data or 0)
-                    kalem.nakliye_araci_id = arac_id if arac_id > 0 else None
-
-                db.session.add(kalem)
-                toplam_gelir += (kalem.kiralama_brm_fiyat * max((bit - bas).days + 1, 1)) + (kalem.nakliye_satis_fiyat or 0)
-
-            if toplam_gelir > 0:
-                db.session.add(HizmetKaydi(
-                    firma_id=yeni_kiralama.firma_musteri_id, tarih=date.today(), tutar=toplam_gelir,
-                    yon='giden', fatura_no=yeni_kiralama.kiralama_form_no, ozel_id=yeni_kiralama.id,
-                    aciklama=f"Kiralama Bedeli - {yeni_kiralama.kiralama_form_no}"
-                ))
-
-            db.session.commit(); flash('Kiralama başarıyla kaydedildi.', 'success'); return redirect(url_for('kiralama.index'))
+            KiralamaService.create_kiralama_with_relations(kiralama_data, kalemler_data, actor_id=actor_id)
+            flash('Kiralama kaydı başarıyla oluşturuldu.', 'success')
+            return redirect(url_for('kiralama.index'))
+            
+        except ValidationError as e:
+            flash(f"Doğrulama Hatası: {str(e)}", "warning")
         except Exception as e:
-            db.session.rollback(); traceback.print_exc(); flash(f"Kayıt Hatası: {e}", "danger")
-
-    return render_template('kiralama/ekle.html', form=form)
+            current_app.logger.error(f"Kiralama Kayıt Hatası: {str(e)}")
+            flash(f"Sistemsel bir hata oluştu. Lütfen tekrar deneyin.", "danger")
+    
+    elif request.method == 'POST':
+        for field, errors in form.errors.items():
+            if field == 'kalemler':
+                for idx, kalem_errors in enumerate(errors):
+                    for k_field, k_msg in kalem_errors.items():
+                        flash(f"Satır {idx+1} - {k_field}: {k_msg}", "warning")
+            else:
+                flash(f"{field}: {errors}", "warning")
+    subeler = Sube.query.all()
+    markalar = [m[0] for m in db.session.query(Ekipman.marka).filter(Ekipman.marka.isnot(None)).distinct().all()]
+    tipler = [t[0] for t in db.session.query(Ekipman.tipi).filter(Ekipman.tipi.isnot(None), Ekipman.tipi != '').distinct().all()]
+    return render_template('kiralama/ekle.html', form=form,subeler=subeler, markalar=markalar, tipler=tipler, is_edit=False)
 
 @kiralama_bp.route('/duzenle/<int:kiralama_id>', methods=['GET', 'POST'])
+@login_required
 def duzenle(kiralama_id):
-    kiralama = Kiralama.query.get_or_404(kiralama_id)
-    form = KiralamaForm()
-
-    if request.method == 'GET':
-        form.firma_musteri_id.data = kiralama.firma_musteri_id
-        form.kdv_orani.data = kiralama.kdv_orani
-        form.doviz_kuru_usd.data = kiralama.doviz_kuru_usd
-        form.doviz_kuru_eur.data = kiralama.doviz_kuru_eur
-        form.kiralama_form_no.data = kiralama.kiralama_form_no
-        
-        while len(form.kalemler) > 0: 
-            form.kalemler.pop_entry()
-            
-        for k in kiralama.kalemler:
-            entry = form.kalemler.append_entry({
-                'ekipman_id': k.ekipman_id,
-                'kiralama_baslangici': k.kiralama_baslangici,
-                'kiralama_bitis': k.kiralama_bitis,
-                'kiralama_brm_fiyat': k.kiralama_brm_fiyat,
-                'kiralama_alis_fiyat': k.kiralama_alis_fiyat,
-                'nakliye_satis_fiyat': k.nakliye_satis_fiyat,
-                'nakliye_alis_fiyat': k.nakliye_alis_fiyat,
-                'dis_tedarik_ekipman': 1 if k.is_dis_tedarik_ekipman else 0,
-                'harici_ekipman_marka': k.harici_ekipman_marka,
-                'harici_ekipman_model': k.harici_ekipman_model,
-                'harici_ekipman_seri_no': k.harici_ekipman_seri_no,
-                'harici_ekipman_tipi': k.harici_ekipman_tipi,
-                'harici_ekipman_kaldirma_kapasitesi': k.harici_ekipman_kapasite,
-                'harici_ekipman_calisma_yuksekligi': k.harici_ekipman_yukseklik,
-                'harici_ekipman_uretim_tarihi': k.harici_ekipman_uretim_yili,
-                'harici_ekipman_tedarikci_id': k.harici_ekipman_tedarikci_id,
-                'dis_tedarik_nakliye': 1 if k.is_harici_nakliye else 0, 
-                'nakliye_tedarikci_id': k.nakliye_tedarikci_id,
-                'nakliye_araci_id': k.nakliye_araci_id or 0
-            })
-            entry.form.id.data = k.id
-            
-        if len(form.kalemler) == 0:
-            form.kalemler.append_entry()
-
-    populate_kiralama_form_choices(form, kiralama_objesi=kiralama, include_ids=[k.ekipman_id for k in kiralama.kalemler if k.ekipman_id])
+    """Mevcut bir kiralama kaydını düzenleme."""
+    kiralama = db.get_or_404(Kiralama, kiralama_id)
+    form = KiralamaForm(obj=kiralama)
+    
+    try:
+        include_ids = [k.ekipman_id for k in kiralama.kalemler if k.ekipman_id]
+        populate_kiralama_form_choices(form, include_ids=include_ids)
+    except Exception as e:
+        current_app.logger.error(f"Seçenek doldurma hatası (Düzenle): {str(e)}")
+        flash("Form seçenekleri yüklenirken hata oluştu.", "danger")
+        return redirect(url_for('kiralama.index'))
 
     if form.validate_on_submit():
         try:
-            HizmetKaydi.query.filter_by(fatura_no=kiralama.kiralama_form_no).delete(synchronize_session=False)
-            
-            kiralama.firma_musteri_id = form.firma_musteri_id.data
-            kiralama.kdv_orani = form.kdv_orani.data
-            kiralama.doviz_kuru_usd = form.doviz_kuru_usd.data
-            kiralama.doviz_kuru_eur = form.doviz_kuru_eur.data
-            
-            toplam_gelir = Decimal('0.00')
-            formdan_gelen_idler = []
+            actor_id = getattr(current_user, 'id', None)
+            kiralama_data = {
+                'firma_musteri_id': form.firma_musteri_id.data,
+                'kdv_orani': form.kdv_orani.data,
+                'doviz_kuru_usd': form.doviz_kuru_usd.data,
+                'doviz_kuru_eur': getattr(form, 'doviz_kuru_eur', form.doviz_kuru_usd).data
+            }
+            kalemler_data = [k_form.data for k_form in form.kalemler]
 
-            for k_form in form.kalemler:
-                f = k_form.form 
-                bas, bit = f.kiralama_baslangici.data, f.kiralama_bitis.data
-                if not (bas and bit): continue
-
-                kalem_id = f.id.data
-                aktif = KiralamaKalemi.query.get(int(kalem_id)) if (kalem_id and str(kalem_id).isdigit()) else KiralamaKalemi(kiralama_id=kiralama.id)
-                
-                # Önce NOT NULL alanlarını doldurarak IntegrityError'u engelle
-                aktif.kiralama_baslangici, aktif.kiralama_bitis = bas, bit
-                aktif.kiralama_brm_fiyat = Decimal(str(f.kiralama_brm_fiyat.data or 0))
-                aktif.kiralama_alis_fiyat = Decimal(str(f.kiralama_alis_fiyat.data or 0))
-                aktif.nakliye_satis_fiyat = Decimal(str(f.nakliye_satis_fiyat.data or 0))
-                aktif.nakliye_alis_fiyat = Decimal(str(f.nakliye_alis_fiyat.data or 0))
-                aktif.sonlandirildi = 0
-
-                is_dis = int(f.dis_tedarik_ekipman.data or 0) == 1
-                if not is_dis:
-                    y_eid = int(f.ekipman_id.data or 0)
-                    if y_eid > 0:
-                        if aktif.ekipman_id and aktif.ekipman_id != y_eid:
-                            eski = Ekipman.query.get(aktif.ekipman_id)
-                            if eski: eski.calisma_durumu = 'bosta'
-                        
-                        aktif.ekipman_id, aktif.is_dis_tedarik_ekipman = y_eid, False
-                        ekip = Ekipman.query.get(y_eid)
-                        if ekip: ekip.calisma_durumu = 'kirada'
-                else:
-                    if aktif.ekipman_id:
-                        eski = Ekipman.query.get(aktif.ekipman_id)
-                        if eski: eski.calisma_durumu = 'bosta'
-                    aktif.ekipman_id, aktif.is_dis_tedarik_ekipman = None, True
-                    aktif.harici_ekipman_marka = f.harici_ekipman_marka.data
-                    aktif.harici_ekipman_model = f.harici_ekipman_model.data
-                    aktif.harici_ekipman_tedarikci_id = f.harici_ekipman_tedarikci_id.data if int(f.harici_ekipman_tedarikci_id.data or 0) > 0 else None
-
-                aktif.is_harici_nakliye = int(f.dis_tedarik_nakliye.data or 0) == 1
-                aktif.is_oz_mal_nakliye = not aktif.is_harici_nakliye
-                aktif.nakliye_tedarikci_id = f.nakliye_tedarikci_id.data if aktif.is_harici_nakliye else None
-                aktif.nakliye_araci_id = f.nakliye_araci_id.data if (aktif.is_oz_mal_nakliye and int(f.nakliye_araci_id.data or 0) > 0) else None
-                
-                gun = max((bit - bas).days + 1, 1)
-                toplam_gelir += (aktif.kiralama_brm_fiyat * gun) + aktif.nakliye_satis_fiyat
-                
-                if not aktif.id: db.session.add(aktif)
-                db.session.flush()
-                formdan_gelen_idler.append(aktif.id)
-            
-            for k in list(kiralama.kalemler):
-                if k.id not in formdan_gelen_idler:
-                    if k.ekipman: k.ekipman.calisma_durumu = 'bosta'
-                    db.session.delete(k)
-
-            if toplam_gelir > 0:
-                db.session.add(HizmetKaydi(
-                    firma_id=kiralama.firma_musteri_id, tarih=date.today(), tutar=toplam_gelir,
-                    yon='giden', fatura_no=kiralama.kiralama_form_no, ozel_id=kiralama.id,
-                    aciklama=f"Kiralama Güncelleme - {kiralama.kiralama_form_no}"
-                ))
-            
-            db.session.commit()
-            flash('Kiralama güncellendi.', 'success')
+            KiralamaService.update_kiralama_with_relations(kiralama.id, kiralama_data, kalemler_data, actor_id=actor_id)
+            flash('Kiralama başarıyla güncellendi.', 'success')
             return redirect(url_for('kiralama.index'))
+        except ValidationError as e:
+            flash(f"Hata: {str(e)}", "warning")
         except Exception as e:
-            db.session.rollback()
-            traceback.print_exc()
-            flash(f"Hata: {e}", "danger")
-
-    return render_template('kiralama/duzelt.html', form=form, kiralama=kiralama)
+            current_app.logger.error(f"Kiralama Güncelleme Hatası (ID: {kiralama_id}): {str(e)}")
+            flash(f"Güncelleme sırasında sistemsel bir hata oluştu.", "danger")
+    subeler = Sube.query.all()
+    markalar = [m[0] for m in db.session.query(Ekipman.marka).filter(Ekipman.marka.isnot(None)).distinct().all()]
+    tipler = [t[0] for t in db.session.query(Ekipman.tipi).filter(Ekipman.tipi.isnot(None), Ekipman.tipi != '').distinct().all()]
+    return render_template('kiralama/duzelt.html', form=form, kiralama=kiralama,markalar=markalar, subeler=subeler, tipler=tipler, is_edit=True)
 
 @kiralama_bp.route('/sil/<int:kiralama_id>', methods=['POST'])
+@login_required
 def sil(kiralama_id):
-    kiralama = Kiralama.query.get_or_404(kiralama_id)
+    """Kiralama ve bağlı finansal kayıtları siler."""
     try:
-        HizmetKaydi.query.filter_by(fatura_no=kiralama.kiralama_form_no).delete()
-        for k in kiralama.kalemler:
-            if k.ekipman: k.ekipman.calisma_durumu = 'bosta'
-        db.session.delete(kiralama); db.session.commit(); flash('Kiralama silindi.', 'success')
+        actor_id = getattr(current_user, 'id', None)
+        KiralamaService.delete_with_relations(kiralama_id, actor_id=actor_id)
+        flash('Kiralama kaydı ve bağlı tüm hareketler silindi.', 'success')
+    except ValidationError as e:
+        flash(str(e), "warning")
     except Exception as e:
-        db.session.rollback(); flash(f'Hata: {e}', 'danger')
+        current_app.logger.error(f"Kiralama Silme Hatası (ID: {kiralama_id}): {str(e)}")
+        flash(f'Silme işlemi başarısız oldu.', 'danger')
     return redirect(url_for('kiralama.index'))
 
 @kiralama_bp.route('/kalem/sonlandir', methods=['POST'])
+@login_required
 def sonlandir_kalem():
+    """Kiralama kalemini kapatır ve makineyi boşa çıkarır."""
     try:
-        kalem = KiralamaKalemi.query.get_or_404(request.form.get('kalem_id', type=int))
-        bitis = request.form.get('bitis_tarihi')
-        if bitis: kalem.kiralama_bitis = datetime.strptime(bitis, '%Y-%m-%d').date()
-        kalem.sonlandirildi = True
-        if kalem.ekipman: kalem.ekipman.calisma_durumu = 'bosta'
-        db.session.commit(); guncelle_cari_toplam(kalem.kiralama_id); flash("Kalem sonlandırıldı.", "success")
+        kalem_id = request.form.get('kalem_id', type=int)
+        if not kalem_id:
+            flash("İşlem yapılacak kiralama kalemi seçilmedi.", "warning")
+            return redirect(url_for('kiralama.index'))
+
+        actor_id = getattr(current_user, 'id', None)
+        bitis_str = request.form.get('bitis_tarihi')
+        donus_sube_id = request.form.get('donus_sube_id')
+        
+        KiralamaKalemiService.sonlandir(kalem_id, bitis_str, donus_sube_id, actor_id=actor_id)
+        flash("Kiralama başarıyla sonlandırıldı.", "success")
+    except ValidationError as e:
+        flash(f"Hata: {str(e)}", "warning")
     except Exception as e:
-        db.session.rollback(); flash(f"Hata: {e}", "danger")
+        current_app.logger.error(f"Kalem Sonlandırma Hatası: {str(e)}")
+        flash(f"İşlem sırasında bir hata oluştu.", "danger")
     return redirect(url_for('kiralama.index'))
 
 @kiralama_bp.route('/kalem/iptal_et', methods=['POST'])
+@login_required
 def iptal_et_kalem():
+    """Sonlandırma işlemini geri alır."""
     try:
-        kalem = KiralamaKalemi.query.get_or_404(request.form.get('kalem_id', type=int))
-        kalem.sonlandirildi = False
-        if kalem.ekipman: kalem.ekipman.calisma_durumu = 'kirada'
-        db.session.commit(); guncelle_cari_toplam(kalem.kiralama_id); flash("Sonlandırma geri alındı.", "success")
+        kalem_id = request.form.get('kalem_id', type=int)
+        if not kalem_id:
+            flash("Hatalı kalem seçimi.", "warning")
+            return redirect(url_for('kiralama.index'))
+
+        actor_id = getattr(current_user, 'id', None)
+        KiralamaKalemiService.iptal_et_sonlandirma(kalem_id, actor_id=actor_id)
+        flash("İşlem başarıyla geri alındı.", "success")
+    except ValidationError as e:
+        flash(f"Hata: {str(e)}", "warning")
     except Exception as e:
-        db.session.rollback(); flash(f"Hata: {e}", "danger")
+        current_app.logger.error(f"Sonlandırma İptal Hatası: {str(e)}")
+        flash(f"İşlem geri alınamadı.", "danger")
     return redirect(url_for('kiralama.index'))
+@kiralama_bp.route('/api/ekipman-filtrele')
+def api_ekipman_filtrele():
+    try:
+        # Sadece bizim olan (Tedarikçi olmayan), aktif ve boşta olan makineler
+        query = Ekipman.query.filter_by(is_active=True, firma_tedarikci_id=None, calisma_durumu='bosta')
+        
+        # Filtreleri yakala
+        sube_id = request.args.get('sube_id', type=int)
+        tip = request.args.get('tip')
+        marka = request.args.get('marka')
+        enerji = request.args.get('enerji')
+        ortam = request.args.get('ortam')
+        
+        y_min = request.args.get('y_min', type=float)
+        y_max = request.args.get('y_max', type=float)
+        k_min = request.args.get('k_min', type=float)
+        
+        agirlik_max = request.args.get('agirlik_max', type=float)
+        genislik_max = request.args.get('genislik_max', type=float)
+        ky_max = request.args.get('ky_max', type=float)
+        
+        # Sorguları uygula
+        if sube_id: query = query.filter(Ekipman.sube_id == sube_id)
+        if tip: query = query.filter(Ekipman.tipi == tip)
+        if marka: query = query.filter(Ekipman.marka == marka)
+        if enerji: query = query.filter(Ekipman.yakit == enerji)
+        if ortam == 'ic': query = query.filter(Ekipman.ic_mekan_uygun == True)
+        
+        if y_min: query = query.filter(Ekipman.calisma_yuksekligi >= y_min)
+        if y_max: query = query.filter(Ekipman.calisma_yuksekligi <= y_max)
+        if k_min: query = query.filter(Ekipman.kaldirma_kapasitesi >= k_min)
+        if agirlik_max: query = query.filter(Ekipman.agirlik <= agirlik_max)
+        if genislik_max: query = query.filter(Ekipman.genislik <= genislik_max)
+        if ky_max: query = query.filter(Ekipman.kapali_yukseklik <= ky_max)
+        
+        ekipmanlar = query.order_by(Ekipman.kod).all()
+        
+        data = []
+        for e in ekipmanlar:
+            # Şube varsa adını, yoksa 'Şubesiz' yazar. Değişken adı temizlendi.
+            gecici_sube_adi = e.sube.isim if e.sube else 'Merkez / Şubesiz'
+            
+            data.append({
+                'id': e.id,
+                'label': f"{e.kod} | {e.tipi} ({e.calisma_yuksekligi}m) - {gecici_sube_adi}"
+            })
+            
+        return jsonify({
+            'success': True,
+            'count': len(data),
+            'data': data
+        })
+    except Exception as e:
+        # Gerçek hatayı ekrana basması için 'error' anahtarı eklendi
+        return jsonify({'success': False, 'error': str(e)}), 500
+

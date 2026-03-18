@@ -1,8 +1,8 @@
 from flask import Blueprint
 
-# 'makine degisim' adında bir blueprint (departman tabelası) oluştur
-makinedegisim_bp = Blueprint('makinedegisim', __name__)
+# 1. Önce Blueprint tanımlanır
+makinedegisim_bp = Blueprint('makinedegisim', __name__, template_folder='templates')
 
-# Bu departmana ait rotaları (URL'leri) bağla
-# (Circular import'u önlemek için import en sonda yapılır)
-from app.makinedegisim import routes
+# 2. Sonra rotalar EN ALTTA içeri aktarılır (import edilir)
+# Eğer bu satır yoksa, yazdığın routes.py çalışmaz ve 404 verir!
+from . import routes 

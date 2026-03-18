@@ -1,53 +1,65 @@
-from flask_wtf import FlaskForm
-from wtforms import StringField, SubmitField, IntegerField, SelectField, TextAreaField, DateField, FieldList, FormField
-from wtforms.validators import DataRequired, InputRequired, Length, Email, Optional, ValidationError
-from wtforms.validators import  NumberRange
+from wtforms import FloatField, StringField, SelectField, IntegerField, BooleanField, SubmitField
+from wtforms.validators import DataRequired, Length, Optional
+from app.forms.base_form import BaseForm, MoneyField
 
-# Modellerin yeni adresleri:
-from app.filo.models import Ekipman, BakimKaydi, StokKarti
+class EkipmanForm(BaseForm):
+    """
+    Ekipman (Makine) ekleme ve düzenleme formu.
+    BaseForm ve MoneyField sayesinde veriler otomatik temizlenir ve formatlanır.
+    """
+    kod = StringField('Makine Kodu', validators=[
+        DataRequired(message="Makine kodu zorunludur."),
+        Length(max=50)
+    ])
+    
+    tipi = SelectField('Makine Tipi', choices=[
+        ('BOM', 'Bomlu Platform'),
+        ('MAKAS', 'Makaslı Platform'),
+        ('FORKLIFT', 'Forklift'),
+        ('VINC', 'Vinç'),
+        ('DIGER', 'Diğer')
+    ], validators=[DataRequired(message="Lütfen makine tipini seçin.")])
+    
+    marka = StringField('Marka', validators=[Optional(), Length(max=100)])
+    model = StringField('Model', validators=[Optional(), Length(max=100)])
+    seri_no = StringField('Seri Numarası', validators=[Optional(), Length(max=100)])
+    
+    uretim_yili = IntegerField('Üretim Yılı', validators=[Optional()])
+    calisma_yuksekligi = StringField('Çalışma Yüksekliği (m)', validators=[Optional(), Length(max=50)])
+    kaldirma_kapasitesi = StringField('Kaldırma Kapasitesi (kg)', validators=[Optional(), Length(max=50)])
+    
+    yakit = SelectField('Yakıt Tipi', choices=[
+        ('Dizel', 'Dizel'),
+        ('Akülü', 'Akülü'),
+        ('LPG', 'LPG'),
+        ('Hibrit', 'Hibrit')
+    ], validators=[Optional()])
 
-from app.utils import validate_currency, secim_hata_mesaji
+    agirlik = FloatField('Makine Ağırlığı (kg)', validators=[Optional()])
+    ic_mekan_uygun = BooleanField('İç Mekan Kullanımına Uygun (İz Yapmayan Lastik)')
+   
+    genislik = FloatField('Genişlik (m)', validators=[Optional()])
+    uzunluk = FloatField('Uzunluk (m)', validators=[Optional()])
+    kapali_yukseklik = FloatField('Kapalı Yükseklik (m)', validators=[Optional()])
 
-# 2. EkipmanForm
-class EkipmanForm(FlaskForm):
-    kod = StringField('Makine Kodu', validators=[InputRequired()])
-    yakit = StringField('Yakıt Türü', validators=[InputRequired()])
-    tipi = StringField('Makine Tipi', validators=[InputRequired()])
-    marka = StringField('Makine Markası', validators=[InputRequired()])
-    model = StringField('Makine Modeli', validators=[InputRequired()])
-    seri_no = StringField('Makine Seri No', validators=[InputRequired()])
-    calisma_yuksekligi = StringField('Çalışma Yüksekliği (m)', validators=[InputRequired()]) 
-    kaldirma_kapasitesi = StringField('Kaldırma Kapasitesi (kg)', validators=[InputRequired()])
-    uretim_tarihi = StringField('Üretim Tarihi (Yıl)', validators=[InputRequired()])
-    giris_maliyeti = StringField('Giriş Maliyeti (Satın Alma)', validators=[Optional(), validate_currency])
-    para_birimi = SelectField(
-        'Para Birimi', 
-        choices=[('TRY', 'TL (Türk Lirası)'), ('USD', 'USD (Amerikan Doları)'), ('EUR', 'EUR (Euro)')],
-        default='TRY',
-        validators=[InputRequired()]
-    )
+    # --- İŞTE EN BÜYÜK YENİLİK: Otomatik formatlanan parasal alan ---
+    giris_maliyeti = MoneyField('Giriş Maliyeti', validators=[Optional()])
+    
+    para_birimi = SelectField('Para Birimi', choices=[
+        ('TRY', 'TRY'), ('USD', 'USD'), ('EUR', 'EUR'), ('GBP', 'GBP')
+    ], default='TRY')
+
+    # Şubeler rotada (routes.py) dinamik olarak veritabanından doldurulacak
+    sube_id = SelectField('Bulunduğu Şube', coerce=int, validators=[
+        DataRequired(message="Şube seçimi zorunludur.")
+    ])
+    
+    calisma_durumu = SelectField('Çalışma Durumu', choices=[
+        ('bosta', 'Boşta (Depoda)'),
+        ('kirada', 'Kirada'),
+        ('serviste', 'Serviste / Bakımda')
+    ], default='bosta')
+
+    
+    
     submit = SubmitField('Kaydet')
-
-
-# 7. StokKartiForm
-class StokKartiForm(FlaskForm):
-    parca_kodu = StringField('Parça Kodu', validators=[InputRequired()])
-    parca_adi = StringField('Parça Adı', validators=[InputRequired()])
-    mevcut_stok = IntegerField('Mevcut Stok Adedi', default=0, validators=[InputRequired()])
-    varsayilan_tedarikci_id = SelectField('Varsayılan Tedarikçi', coerce=int, default='0', validators=[Optional()])
-    submit = SubmitField('Stok Kartını Kaydet')
-
-# 8. KullanilanParcaForm
-class KullanilanParcaForm(FlaskForm):
-    class Meta: csrf = False
-    stok_karti_id = SelectField('Kullanılan Parça', coerce=int, default='0', validators=[NumberRange(min=1, message=secim_hata_mesaji)])
-    kullanilan_adet = IntegerField('Adet', default=1, validators=[InputRequired()])
-
-# 9. BakimKaydiForm
-class BakimKaydiForm(FlaskForm):
-    ekipman_id = SelectField('Bakım Yapılan Ekipman', coerce=int, default='0', validators=[NumberRange(min=1, message=secim_hata_mesaji)])
-    tarih = DateField('Bakım Tarihi', format='%Y-%m-%d', validators=[InputRequired()])
-    aciklama = TextAreaField('Yapılan İşlemlerin Açıklaması', validators=[InputRequired()])
-    calisma_saati = IntegerField('Ekipman Çalışma Saati (Opsiyonel)', validators=[Optional()])
-    kullanilan_parcalar = FieldList(FormField(KullanilanParcaForm), min_entries=0)
-    submit = SubmitField('Bakım Kaydını Tamamla')

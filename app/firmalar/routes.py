@@ -1,157 +1,123 @@
 import os
-from flask import render_template, url_for, redirect, flash, request
-from sqlalchemy import or_, and_
-import traceback
-from decimal import Decimal
+from flask import render_template, url_for, redirect, flash, request, current_app
 from datetime import date
+from flask_login import current_user, login_required
+from decimal import Decimal
 
-from app import db
 from app.firmalar import firmalar_bp
-from app.firmalar.models import Firma
-from app.kiralama.models import Kiralama, KiralamaKalemi
-from app.filo.models import Ekipman
-from app.cari.models import Kasa, Odeme, HizmetKaydi
 from app.firmalar.forms import FirmaForm
-from sqlalchemy.orm import joinedload, subqueryload
+from app.firmalar.models import Firma
+from app.services.firma_services import FirmaService
+from app.services.base import ValidationError
 
-# YARDIMCI FONKSİYONLAR
-from app.utils import klasor_adi_temizle
+# --- GÜVENLİK YARDIMCISI ---
+def get_actor_id():
+    """Kullanıcı giriş yapmışsa ID'sini döner, aksi halde None."""
+    return getattr(current_user, 'id', None)
 
 # -------------------------------------------------------------------------
-# 1. Firma Listeleme (Görünürlük Sorunu Giderildi)
+# 1. Aktif Firma Listeleme
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/')
 @firmalar_bp.route('/index')
+@login_required
 def index():
     try:
         page = request.args.get('page', 1, type=int)
         q = request.args.get('q', '', type=str)
         
-        # Filtre: is_active alanı True olanlar VEYA NULL (boş) kalanlar görünür
-        # Veritabanı taşımalarında is_active alanı dolmamış firmalar bu sayede kaybolmaz.
-        base_query = Firma.query.filter(
-            and_(
-                Firma.firma_adi != 'Dahili Kasa İşlemleri',
-                or_(Firma.is_active == True, Firma.is_active == None)
-            )
-        )
+        query = FirmaService.get_active_firms(search_query=q)
+        pagination = query.paginate(page=page, per_page=50, error_out=False)
         
-        if q:
-            search_term = f'%{q}%'
-            base_query = base_query.filter(
-                or_(
-                    Firma.firma_adi.ilike(search_term),
-                    Firma.yetkili_adi.ilike(search_term),
-                    Firma.vergi_no.ilike(search_term),
-                    Firma.telefon.ilike(search_term),
-                    Firma.eposta.ilike(search_term)
-                )
-            )
-
-        # Sayfa başına 50 kayıt göstererek listeyi daha kapsayıcı hale getirdik
-        pagination = base_query.order_by(Firma.id.desc()).paginate(page=page, per_page=50, error_out=False)
-        firmalar = pagination.items
-        
-        # Debug: Konsola listelenen miktar bilgisini basar
-        print(f"Sistem Bilgisi: {len(firmalar)} firma listeleniyor.")
-        
-        return render_template('firmalar/index.html', firmalar=firmalar, pagination=pagination, q=q)
+        return render_template('firmalar/index.html', firmalar=pagination.items, pagination=pagination, q=q)
     except Exception as e:
-        traceback.print_exc()
-        flash(f"Liste yüklenirken hata oluştu: {str(e)}", "danger")
-        return render_template('firmalar/index.html', firmalar=[], pagination=None, q=q)
+        current_app.logger.error(f"Firma listesi yüklenirken hata: {str(e)}")
+        flash("Firma listesi şu an yüklenemiyor.", "danger")
+        return redirect(url_for('main.index')) # Ana sayfaya yönlendir
 
 # -------------------------------------------------------------------------
-# 2. Yeni Firma Ekleme
+# 2. Pasif (Arşivlenmiş) Firma Listeleme
+# -------------------------------------------------------------------------
+@firmalar_bp.route('/pasif')
+@login_required
+def pasif_index():
+    try:
+        page = request.args.get('page', 1, type=int)
+        q = request.args.get('q', '', type=str)
+        
+        query = FirmaService.get_inactive_firms(search_query=q)
+        pagination = query.paginate(page=page, per_page=50, error_out=False)
+        
+        return render_template('firmalar/pasif_index.html', firmalar=pagination.items, pagination=pagination, q=q)
+    except Exception as e:
+        current_app.logger.error(f"Pasif firma listesi hatası: {str(e)}")
+        flash("Arşivlenmiş firmalar yüklenemedi.", "danger")
+        return redirect(url_for('firmalar.index'))
+
+# -------------------------------------------------------------------------
+# 3. Yeni Firma Ekleme
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/ekle', methods=['GET', 'POST'])
+@login_required
 def ekle():
     form = FirmaForm()
+    
     if form.validate_on_submit():
         try:
-            # Mükerrer vergi no kontrolü
-            if form.vergi_no.data:
-                mevcut = Firma.query.filter_by(vergi_no=form.vergi_no.data).first()
-                if mevcut:
-                    status = "arşivde" if not mevcut.is_active else "aktif"
-                    flash(f"'{form.vergi_no.data}' vergi numarası zaten {status} bir kayıtta mevcut!", "warning")
-                    return render_template('firmalar/ekle.html', form=form)
-
-            yeni_firma = Firma(
-                firma_adi=form.firma_adi.data,
-                yetkili_adi=form.yetkili_adi.data,
-                telefon=form.telefon.data,
-                eposta=form.eposta.data,
-                iletisim_bilgileri=form.iletisim_bilgileri.data,
-                vergi_dairesi=form.vergi_dairesi.data,
-                vergi_no=form.vergi_no.data,
-                is_musteri=form.is_musteri.data,
-                is_tedarikci=form.is_tedarikci.data,
-                sozlesme_no=None, # Başlangıçta numara atanmaz
-                sozlesme_rev_no=0,
-                is_active=True,
-                bakiye=Decimal('0')
-            )
-            db.session.add(yeni_firma)
-            db.session.commit()
-            flash(f"'{yeni_firma.firma_adi}' başarıyla kaydedildi. Sözleşme hazırlamak için listeden sağ tıklayın.", "success")
+            # Servis katmanında tanımlı güncellenebilir alanları süzerek al
+            data = {k: v for k, v in form.data.items() if k in FirmaService.updatable_fields}
+            
+            # Başlangıç değerlerini set et
+            data.update({
+                'bakiye': Decimal('0'),
+                'sozlesme_rev_no': 0,
+                'sozlesme_no': None
+            })
+            
+            yeni_firma = Firma(**data)
+            FirmaService.save(yeni_firma, actor_id=get_actor_id())
+            
+            flash(f"'{yeni_firma.firma_adi}' başarıyla sisteme kaydedildi.", "success")
             return redirect(url_for('firmalar.index'))
+        except ValidationError as e:
+            flash(str(e), "warning")
         except Exception as e:
-            db.session.rollback()
-            flash(f"Kayıt hatası: {str(e)}", "danger")
+            current_app.logger.error(f"Firma ekleme hatası: {str(e)}")
+            flash("Kayıt sırasında sistemsel bir hata oluştu.", "danger")
+            
     return render_template('firmalar/ekle.html', form=form, today_date=date.today().strftime('%d.%m.%Y'))
 
 # -------------------------------------------------------------------------
-# 3. Sözleşme Hazırla (PS Numarası Atama ve Klasörleme)
+# 4. Sözleşme Hazırla
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/sozlesme-hazirla/<int:id>', methods=['POST'])
+@login_required
 def sozlesme_hazirla(id):
-    firma = Firma.query.get_or_404(id)
-    if firma.sozlesme_no:
-        flash(f"'{firma.firma_adi}' için zaten bir sözleşme ({firma.sozlesme_no}) mevcut.", "info")
-        return redirect(url_for('firmalar.index'))
     try:
-        # PS Numarası Hesaplama (Yıl Bazlı)
-        current_year = date.today().year
-        last_firma = Firma.query.filter(Firma.sozlesme_no.like(f"PS-{current_year}-%"))\
-                                .order_by(Firma.sozlesme_no.desc()).first()
-        
-        next_nr = 1
-        if last_firma and last_firma.sozlesme_no:
-            try:
-                # Son numarayı alıp 1 artırıyoruz
-                next_nr = int(last_firma.sozlesme_no.split('-')[-1]) + 1
-            except: pass
-        
-        next_ps_no = f"PS-{current_year}-{next_nr:03d}"
-
-        # Klasör İsimlendirme (FirmaAdı_VergiNo)
-        ikinci_parametre = firma.vergi_no if firma.vergi_no else str(firma.id)
-        klasor_adi = klasor_adi_temizle(firma.firma_adi, ikinci_parametre)
-        
-        firma.sozlesme_no = next_ps_no
-        firma.sozlesme_tarihi = date.today()
-        firma.bulut_klasor_adi = klasor_adi
-        
-        # Arşiv Klasörlerini Fiziksel Olarak Oluştur
-        base_path = os.path.join(os.getcwd(), 'app', 'static', 'arsiv', klasor_adi)
-        os.makedirs(os.path.join(base_path, 'PS'), exist_ok=True)
-        os.makedirs(os.path.join(base_path, 'Kiralama_Formlari'), exist_ok=True)
-        
-        db.session.commit()
-        flash(f"'{firma.firma_adi}' için {next_ps_no} nolu sözleşme ve arşiv klasörü hazırlandı.", "success")
+        app_path = os.path.join(os.getcwd(), 'app')
+        FirmaService.sozlesme_hazirla(firma_id=id, base_app_path=app_path, actor_id=get_actor_id())
+        flash("Sözleşme numarası başarıyla atandı ve arşiv klasörleri oluşturuldu.", "success")
+    except ValidationError as e:
+        flash(str(e), "warning")
     except Exception as e:
-        db.session.rollback()
-        flash(f"İşlem hatası: {str(e)}", "danger")
+        current_app.logger.error(f"Sözleşme hazırlama hatası (Firma ID: {id}): {str(e)}")
+        flash("Klasör yapısı oluşturulurken bir hata meydana geldi.", "danger")
     return redirect(url_for('firmalar.index'))
 
 # -------------------------------------------------------------------------
-# 4. Firma Düzenleme
+# 5. Firma Düzenleme
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/duzelt/<int:id>', methods=['GET', 'POST'])
+@login_required
 def duzelt(id):
-    firma = Firma.query.get_or_404(id)
+    firma = FirmaService.get_by_id(id)
+    if not firma:
+        flash("Düzenlenmek istenen firma bulunamadı!", "danger")
+        return redirect(url_for('firmalar.index'))
+        
     form = FirmaForm(obj=firma)
+    
+    # Özel alanları form verisine elle eşle (Form yapısına göre)
     if request.method == 'GET':
         form.genel_sozlesme_no.data = firma.sozlesme_no
         form.sozlesme_rev_no.data = firma.sozlesme_rev_no
@@ -159,135 +125,89 @@ def duzelt(id):
 
     if form.validate_on_submit():
         try:
-            form.populate_obj(firma)
-            firma.sozlesme_no = form.genel_sozlesme_no.data
-            firma.sozlesme_rev_no = form.sozlesme_rev_no.data
-            firma.sozlesme_tarihi = form.sozlesme_tarihi.data
-            db.session.commit()
-            flash('Firma bilgileri güncellendi!', 'success')
+            data = {k: v for k, v in form.data.items() if k in FirmaService.updatable_fields}
+            
+            # Formdaki özel alanları veritabanı alanlarıyla eşleştir
+            data.update({
+                'sozlesme_no': form.genel_sozlesme_no.data,
+                'sozlesme_rev_no': form.sozlesme_rev_no.data,
+                'sozlesme_tarihi': form.sozlesme_tarihi.data
+            })
+            
+            FirmaService.update(id, data, actor_id=get_actor_id())
+            flash(f"'{firma.firma_adi}' bilgileri başarıyla güncellendi.", 'success')
             return redirect(url_for('firmalar.index'))
+        except ValidationError as e:
+            flash(str(e), "danger")
         except Exception as e:
-            db.session.rollback()
-            flash(f"Hata: {str(e)}", "danger")
+            current_app.logger.error(f"Firma güncelleme hatası (ID: {id}): {str(e)}")
+            flash("Bilgiler güncellenirken bir hata oluştu.", "danger")
+            
     return render_template('firmalar/duzelt.html', form=form, firma=firma)
 
 # -------------------------------------------------------------------------
-# 5. Firma Bilgi (Detaylı Cari Hesaplamalar)
+# 6. Firma Bilgi / Cari Ekstre
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/bilgi/<int:id>', methods=['GET'])
+@login_required
 def bilgi(id):
     try:
-        # Firmayı tüm finansal ilişkileriyle tek seferde çekiyoruz (Eager Loading)
-        firma = Firma.query.options(
-            subqueryload(Firma.kiralamalar).options(subqueryload(Kiralama.kalemler).options(joinedload(KiralamaKalemi.ekipman))),
-            subqueryload(Firma.odemeler).joinedload(Odeme.kasa),
-            subqueryload(Firma.hizmet_kayitlari),
-        ).get_or_404(id)
-        
-        hareketler = []
-        
-        # 1. Hizmet ve Fatura Kayıtlarını İşle (Borç/Alacak Ayrımı)
-        for h in firma.hizmet_kayitlari:
-            tutar = h.tutar or Decimal('0')
-            if hasattr(h, 'kiralama_id') and h.kiralama_id:
-                tur_adi, tur_tipi, ozel_id = 'Kiralama', 'kiralama', h.kiralama_id
-            elif hasattr(h, 'nakliye_id') and h.nakliye_id:
-                tur_adi, tur_tipi, ozel_id = 'Nakliye', 'nakliye', h.nakliye_id
-            else:
-                tur_tipi, ozel_id = 'fatura', h.id
-                tur_adi = 'Fatura (Satış)' if h.yon == 'giden' else 'Fatura (Alış)'
-
-            hareketler.append({
-                'id': h.id, 
-                'ozel_id': ozel_id, 
-                'tarih': h.tarih, 
-                'tur': tur_adi,
-                'tur_tipi': tur_tipi, 
-                'aciklama': h.aciklama, 
-                'belge_no': h.fatura_no,
-                'borc': tutar if h.yon == 'giden' else Decimal('0'),
-                'alacak': tutar if h.yon == 'gelen' else Decimal('0'),
-                'nesne': h
-            })
-
-        # 2. Ödemeleri ve Tahsilatları İşle
-        for o in firma.odemeler:
-            tutar = o.tutar or Decimal('0')
-            yon = getattr(o, 'yon', 'tahsilat')
-            hareketler.append({
-                'id': o.id, 
-                'ozel_id': o.id, 
-                'tarih': o.tarih,
-                'tur': 'Tahsilat (Giriş)' if yon == 'tahsilat' else 'Ödeme (Çıkış)',
-                'tur_tipi': 'odeme', 
-                'aciklama': o.aciklama or 'Finansal İşlem',
-                'belge_no': f"{o.kasa.kasa_adi if o.kasa else 'Kasa Tanımsız'}",
-                'borc': tutar if yon == 'odeme' else Decimal('0'),
-                'alacak': tutar if yon == 'tahsilat' else Decimal('0'),
-                'nesne': o
-            })
-
-        # 3. Tüm Hareketleri Kronolojik Olarak Sırala
-        hareketler.sort(key=lambda x: x['tarih'] if x['tarih'] else date.min)
-        
-        # 4. Yürüyen Bakiye Hesaplama
-        yuruyen_bakiye, toplam_borc, toplam_alacak = Decimal('0'), Decimal('0'), Decimal('0')
-        for islem in hareketler:
-            toplam_borc += islem['borc']
-            toplam_alacak += islem['alacak']
-            # Borç toplama eklenir, alacak toplamdan çıkarılır
-            yuruyen_bakiye = (yuruyen_bakiye + islem['borc']) - islem['alacak']
-            islem['kumulatif_bakiye'] = yuruyen_bakiye
-
-        # Bakiye Durumunu Belirle
-        if yuruyen_bakiye > 0: 
-            durum_metni, durum_rengi = "Borçlu", "text-danger"
-        elif yuruyen_bakiye < 0: 
-            durum_metni, durum_rengi = "Alacaklı", "text-success"
-        else: 
-            durum_metni, durum_rengi = "Hesap Kapalı", "text-muted"
-
-        return render_template('firmalar/bilgi.html', 
-                               firma=firma, 
-                               hareketler=hareketler,
-                               toplam_borc=toplam_borc, 
-                               toplam_alacak=toplam_alacak,
-                               bakiye=abs(yuruyen_bakiye), 
-                               durum_metni=durum_metni, 
-                               durum_rengi=durum_rengi)
+        finans_verileri = FirmaService.get_financial_summary(id)
+        return render_template('firmalar/bilgi.html', **finans_verileri)
+    except ValidationError as e:
+        flash(str(e), "danger")
+        return redirect(url_for('firmalar.index'))
     except Exception as e:
-        traceback.print_exc()
-        flash(f"Cari bilgiler yüklenirken hata oluştu: {str(e)}", "danger")
+        current_app.logger.error(f"Cari özet yükleme hatası (Firma ID: {id}): {str(e)}")
+        flash("Finansal veriler şu an hesaplanamıyor.", "danger")
         return redirect(url_for('firmalar.index'))
 
 # -------------------------------------------------------------------------
-# 6. İmza Yetkisi Kontrolü
-# -------------------------------------------------------------------------
-@firmalar_bp.route('/imza-kontrol/<int:id>', methods=['POST'])
-def imza_kontrol(id):
-    firma = Firma.query.get_or_404(id)
-    try:
-        firma.imza_yetkisi_kontrol_edildi = True
-        firma.imza_yetkisi_kontrol_tarihi = date.today()
-        db.session.commit()
-        flash("İmza yetkisi kontrolü başarıyla onaylandı.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Onay hatası: {str(e)}", "danger")
-    return redirect(url_for('firmalar.bilgi', id=id))
-
-# -------------------------------------------------------------------------
-# 7. Firma Silme (Soft Delete / Arşivleme)
+# 7. Firmayı Arşive Kaldır (Silme - Kontrollü)
 # -------------------------------------------------------------------------
 @firmalar_bp.route('/sil/<int:id>', methods=['POST'])
+@login_required
 def sil(id):
-    firma = Firma.query.get_or_404(id)
     try:
-        # Fiziksel silme yerine pasife çekme işlemi yapıyoruz
-        firma.is_active = False
-        db.session.commit()
-        flash(f"'{firma.firma_adi}' başarıyla arşive kaldırıldı.", 'success')
+        FirmaService.archive_with_check(id, actor_id=get_actor_id())
+        flash("Firma başarıyla arşive kaldırıldı.", 'success')
+    except ValidationError as e:
+        flash(str(e), 'warning')
     except Exception as e:
-        db.session.rollback()
-        flash(f"Silme hatası: {str(e)}", 'danger')
+        current_app.logger.error(f"Arşivleme hatası (ID: {id}): {str(e)}")
+        flash("İşlem sırasında sistemsel bir hata oluştu.", 'danger')
     return redirect(url_for('firmalar.index'))
+
+# -------------------------------------------------------------------------
+# 8. Firmayı Aktifleştir (Arşivden Geri Al)
+# -------------------------------------------------------------------------
+@firmalar_bp.route('/aktiflestir/<int:id>', methods=['POST'])
+@login_required
+def aktiflestir(id):
+    try:
+        FirmaService.update(id, {'is_active': True}, actor_id=get_actor_id())
+        flash("Firma başarıyla tekrar aktif hale getirildi.", "success")
+    except Exception as e:
+        current_app.logger.error(f"Aktifleştirme hatası (ID: {id}): {str(e)}")
+        flash("İşlem başarısız oldu.", "danger")
+    return redirect(url_for('firmalar.pasif_index'))
+
+# -------------------------------------------------------------------------
+# 9. İmza Yetkisi Kontrolü
+# -------------------------------------------------------------------------
+@firmalar_bp.route('/imza-kontrol/<int:id>', methods=['POST'])
+@login_required
+def imza_kontrol(id):
+    try:
+        FirmaService.update(
+            id, 
+            {'imza_yetkisi_kontrol_edildi': True, 'imza_yetkisi_kontrol_tarihi': date.today()}, 
+            actor_id=get_actor_id()
+        )
+        flash("İmza yetkisi başarıyla onaylandı.", "success")
+    except ValidationError as e:
+        flash(str(e), "danger")
+    except Exception as e:
+        current_app.logger.error(f"İmza kontrol hatası (ID: {id}): {str(e)}")
+        flash("Onay işlemi yapılamadı.", "danger")
+    return redirect(url_for('firmalar.bilgi', id=id))

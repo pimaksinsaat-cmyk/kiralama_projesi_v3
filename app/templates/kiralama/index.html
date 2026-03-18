@@ -71,7 +71,6 @@
 </style>
 
 <div class="container">
-    <!-- ================= ÜST DASHBOARD ================= -->
     <div class="d-flex justify-content-between align-items-end mb-4">
         <div class="d-flex gap-3 flex-grow-1">
             <div class="stats-card-mini border-start border-danger border-4 shadow-sm">
@@ -108,7 +107,6 @@
         </div>
     </div>
 
-    <!-- ================= AKSİYONLAR ================= -->
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <a href="{{ url_for('kiralama.ekle') }}" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm"><i class="fas fa-plus me-2"></i>Yeni Kiralama Kaydı</a>
@@ -131,7 +129,6 @@
         {% endif %}
     {% endwith %}
 
-    <!-- ================= ANA TABLO ================= -->
     <div class="table-responsive">
         <table class="table-hover shadow-sm rounded overflow-hidden">
             <thead>
@@ -173,11 +170,16 @@
                             {% set bdl = (g * kalem.kiralama_brm_fiyat) + (kalem.nakliye_satis_fiyat or 0) %}
                             {% set satir_toplam.val = satir_toplam.val + bdl %}
 
-                            <li class="kalem-listesi-item px-2"
+                            <li class="kalem-listesi-item px-2
+                                {% if not kalem.is_active %}
+                                    opacity-50 text-decoration-line-through
+                                {% endif %}"
                                 data-kalem-id="{{ kalem.id }}"
                                 data-ekipman-kod="{{ kalem.ekipman.kod if kalem.ekipman else (kalem.harici_ekipman_marka ~ ' ' ~ kalem.harici_ekipman_model) }}"
                                 data-csrf-token="{{ csrf_token() }}"
-                                data-sonlandirilmis="{{ 1 if kalem.sonlandirildi else 0 }}">
+                                data-sonlandirilmis="{{ 1 if kalem.sonlandirildi else 0 }}"
+                                data-swap="{{ 1 if not kalem.is_active else 0 }}">
+                                
                                 
                                 {% if kalem.is_dis_tedarik_ekipman %}
                                     <span class="external-badge">DIŞ TEDARİK</span>
@@ -236,49 +238,88 @@
     </div>
 </div>
 
-<!-- ================= MODALLAR VE MENÜLER ================= -->
-
 <div id="context-menu" class="context-menu shadow">
     <div class="px-3 py-2 small text-muted border-bottom fw-bold" id="menu-form-title">FORM İŞLEMLERİ</div>
     <a class="context-menu-item" id="menu-duzenle"><i class="fas fa-edit me-2 text-primary"></i>Kiralama Formunu Düzenle</a>
     
-    <!-- SADECE KİRALAMA FORMU YAZDIRMA -->
     <div style="height:1px; background:#eee; margin:5px 0;"></div>
     <a class="context-menu-item text-primary" id="menu-kiralama-formu"><i class="fas fa-file-invoice me-2"></i>Kiralama Formunu Yazdır (PDF)</a>
-    <!-- YENİ EKLENEN TESLİM TUTANAĞI SEÇENEĞİ -->
     <a class="context-menu-item text-success" id="menu-teslim-tutanagi"><i class="fas fa-file-contract me-2"></i>Teslim Tutanağı Yazdır (PDF)</a>
     <div style="height:1px; background:#eee; margin:5px 0;"></div>
     <a class="context-menu-item text-danger fw-bold" id="menu-sil"><i class="fas fa-trash-alt me-2"></i>Kiralama Kaydını Sil</a>
 </div>
 
-
-
-
-
-
 <div id="context-menu-kalem" class="context-menu-kalem shadow">
     <div class="px-3 py-2 small text-muted border-bottom fw-bold" id="menu-kalem-title">MAKİNE İŞLEMLERİ</div>
+    <a class="context-menu-item text-primary fw-bold" id="menu-degistir"><i class="fas fa-exchange-alt me-2"></i>Makineyi Değiştir (Revizyon)</a>
+    
+    <div style="height:1px; background:#eee; margin:5px 0;"></div>
     <a class="context-menu-item text-success fw-bold" id="menu-sonlandir"><i class="fas fa-stopwatch me-2"></i>Kiralamayı Sonlandır</a>
     <a class="context-menu-item text-warning fw-bold" id="menu-iptal"><i class="fas fa-undo-alt me-2"></i>Sonlandırmayı İptal Et</a>
+
+    <div style="height:1px; background:#eee; margin:5px 0;"></div>
+    <a class="context-menu-item text-danger fw-bold" id="menu-degisim-iptal">
+    <i class="fas fa-undo me-2"></i>Makine Değişimini İptal Et
+    </a>
 </div>
 
 <div id="modal-backdrop-sonlandir" class="custom-backdrop">
-    <div class="custom-modal border border-primary">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0 fw-bold text-dark">Dönüş Tarihi Girişi</h5>
+    <div class="custom-modal border border-primary" style="max-width: 500px;"> <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-stopwatch text-danger me-2"></i>Kiralamayı Sonlandır</h5>
             <button type="button" class="btn-close" onclick="closeModals()"></button>
         </div>
-        <p class="small text-muted mb-3"><span id="modal-ekipman-kod" class="fw-bold text-primary"></span> için fiili sahadan çekilme tarihini onaylayın.</p>
+        <p class="small text-muted mb-3"><span id="modal-ekipman-kod" class="fw-bold text-primary"></span> için sahadan çekilme ve dönüş bilgilerini girin.</p>
         
         <form id="sonlandir-kalem-form" method="POST" action="{{ url_for('kiralama.sonlandir_kalem') }}">
             <input type="hidden" name="csrf_token" id="modal-csrf-token">
             <input type="hidden" name="kalem_id" id="modal-kalem-id">
-            <div class="mb-4">
-                <label class="form-label small fw-bold text-secondary">Fiili Bitiş Tarihi:</label>
+            
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary"><i class="far fa-calendar-alt me-1"></i>Fiili Bitiş Tarihi:</label>
                 <input type="date" name="bitis_tarihi" id="modal-bitis-tarihi" class="form-control shadow-sm border-primary" required>
             </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary"><i class="fas fa-warehouse me-1"></i>İade Alınan Şube / Depo:</label>
+                <select name="donus_sube_id" class="form-select shadow-sm border-primary" required>
+                    <option value="" disabled selected>Lütfen dönüş yapılan yeri seçin...</option>
+                    
+                    <option value="tedarikci" class="text-danger fw-bold">🏭 Tedarikçi / Sahibine İade Edildi</option>
+                    
+                    <optgroup label="Kendi Depolarımız">
+                        {% for s in subeler %}
+                            <option value="{{ s.id }}">{{ s.isim }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="card border-secondary mb-4 shadow-sm bg-light">
+                <div class="card-body py-2 px-3">
+                    <div class="fw-bold text-secondary small mb-2 border-bottom pb-1">
+                        <i class="fas fa-truck-loading me-1"></i> Dönüş Nakliye Bilgileri
+                    </div>
+                    
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="hariciNakliyeSonlandir" name="is_harici_nakliye">
+                        <label class="form-check-label small fw-bold text-dark" for="hariciNakliyeSonlandir">Dış Nakliye (Taşeron) Kullanıldı</label>
+                    </div>
+                    
+                    <div class="mb-1">
+                        <select name="nakliye_araci_id" class="form-select form-select-sm border-secondary text-muted">
+                            <option value="">Öz Mal Araç Seçiniz (Opsiyonel)...</option>
+                            {% if nakliye_araclari %}
+                                {% for arac in nakliye_araclari %}
+                                    <option value="{{ arac.id }}">{{ arac.plaka }} - {{ arac.arac_tipi }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <div class="d-grid">
-                <button type="submit" class="btn btn-primary fw-bold shadow">KİRALAMAYI TAMAMLA</button>
+                <button type="submit" class="btn btn-primary fw-bold shadow"><i class="fas fa-check-circle me-2"></i> KİRALAMAYI TAMAMLA</button>
             </div>
         </form>
     </div>
@@ -328,11 +369,39 @@ document.addEventListener('DOMContentLoaded', function() {
             state.kId = this.dataset.kalemId;
             state.eKod = this.dataset.ekipmanKod;
             state.kCsrf = this.dataset.csrfToken;
+            
             const done = this.dataset.sonlandirilmis === '1';
+            const isSwap = this.dataset.swap === '1';
+            
+            document.getElementById('menu-degisim-iptal').style.display = isSwap ? 'block' : 'none';
+
             document.getElementById('menu-kalem-title').innerText = state.eKod;
-            document.getElementById('menu-sonlandir').style.display = done ? 'none' : 'block';
-            document.getElementById('menu-iptal').style.display = done ? 'block' : 'none';
-            contextMenuKalem.style.top = e.pageY + 'px'; contextMenuKalem.style.left = e.pageX + 'px';
+            
+            // Normal aktif kalem
+            if (!done) {
+                document.getElementById('menu-degistir').style.display = 'block';
+                document.getElementById('menu-sonlandir').style.display = 'block';
+                document.getElementById('menu-iptal').style.display = 'none';
+                document.getElementById('menu-degisim-iptal').style.display = 'none';
+            }
+            // Normal sonlandırılmış kalem
+            else if (done && !isSwap) {
+                document.getElementById('menu-degistir').style.display = 'none';
+                document.getElementById('menu-sonlandir').style.display = 'none';
+                document.getElementById('menu-iptal').style.display = 'block';
+                document.getElementById('menu-degisim-iptal').style.display = 'none';
+            
+            }
+            // Swap edilmiş eski kalem
+            else if (done && isSwap) {
+                document.getElementById('menu-degistir').style.display = 'none';
+                document.getElementById('menu-sonlandir').style.display = 'none';
+                document.getElementById('menu-iptal').style.display = 'none';
+                document.getElementById('menu-degisim-iptal').style.display = 'block';
+            }
+
+            contextMenuKalem.style.top = e.pageY + 'px';
+            contextMenuKalem.style.left = e.pageX + 'px';
             contextMenuKalem.style.display = 'block';
         });
     });
@@ -358,6 +427,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if(state.rentalId) window.open(`/dokumanlar/yazdir/teslim-tutanagi/${state.rentalId}`, '_blank');
         };
 
+    // YENİ EKLENEN: Makine Değişim (Revizyon) Click İşlemi
+        document.getElementById('menu-degistir').onclick = () => {
+             if(state.kId) {
+                 window.location.href = `/makinedegisim/degistir/${state.kId}`;
+             }
+        };
 
     document.getElementById('menu-sonlandir').onclick = () => {
         document.getElementById('modal-kalem-id').value = state.kId;
@@ -373,6 +448,17 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('iptal-csrf-token').value = state.kCsrf;
             document.getElementById('iptal-kalem-form').submit();
         }
+    };
+
+    document.getElementById('menu-degisim-iptal').onclick = () => {
+    if(confirm(state.eKod + ' için yapılan makine değişimi geri alınacak. Emin misiniz?')) {
+        fetch(`/makinedegisim/degisim_iptal/${state.kId}`, {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": state.kCsrf
+            }
+        }).then(() => location.reload());
+    }
     };
 
     window.onclick = (e) => { if(e.target === backdrop) closeModals(); else { contextMenu.style.display = 'none'; contextMenuKalem.style.display = 'none'; } };

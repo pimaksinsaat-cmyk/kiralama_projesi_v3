@@ -1,75 +1,58 @@
-from flask_wtf import FlaskForm
 from wtforms import (
-    StringField, DecimalField, SelectField, DateField, SubmitField, 
-    FormField, FieldList, HiddenField, IntegerField, BooleanField, TextAreaField
+    StringField, SelectField, SubmitField, 
+    DateField, DecimalField
 )
-from wtforms.validators import DataRequired, InputRequired, NumberRange, Optional, Length
+from wtforms.validators import DataRequired, InputRequired, NumberRange, Optional, Length, ValidationError
 from app.utils import secim_hata_mesaji
 
-# --- ÖZEL ALAN: VİRGÜLÜ NOKTAYA ÇEVİREN DECIMAL FIELD ---
-class TRDecimalField(DecimalField):
-    def process_formdata(self, valuelist):
-        if valuelist and valuelist[0]:
-            # Örn gelen: "1.500,50" veya "1.500"
-            val = valuelist[0].strip()
-            
-            # ADIM 1: Eğer değerde hem nokta hem virgül varsa (1.500,50)
-            # Sadece noktayı (binlik) silip virgülü noktaya çeviriyoruz.
-            if '.' in val and ',' in val:
-                val = val.replace('.', '').replace(',', '.')
-            
-            # ADIM 2: Eğer sadece virgül varsa (1500,50)
-            elif ',' in val:
-                val = val.replace(',', '.')
-                
-            # ADIM 3: Eğer sadece nokta varsa (1.500)
-            # İşte burası kritik! JS'den gelen binlik noktasını SİLMELİYİZ.
-            elif '.' in val:
-                # Eğer noktadan sonra 2 basamak varsa ondalık olabilir, 
-                # ama kiralama projesinde 1.500 genelde binliktir. 
-                # JS submit ederken noktayı sildiği için buraya gelen nokta 'ondalık' kabul edilebilir.
-                # Garantiye almak için her türlü noktayı temizliyoruz (JS submit ile uyumlu)
-                pass 
+# --- MİMARİ ENTEGRASYONU: BaseForm ve Özel Alanların İçe Aktarılması ---
+try:
+    from app.forms.base_form import BaseForm, TRDateField, MoneyField
+except ImportError:
+    # Fallback (Güvenlik Ağı): Özel base form bulunamazsa standart WTF kullan
+    from flask_wtf import FlaskForm as BaseForm
+    TRDateField = DateField
+    MoneyField = DecimalField
 
-            valuelist[0] = val
-            
-        return super(TRDecimalField, self).process_formdata(valuelist)
 # -------------------------------------------------------------------------
-# 5. OdemeForm (Tahsilat / Ödeme)
+# 1. OdemeForm (Tahsilat / Ödeme)
 # -------------------------------------------------------------------------
-class OdemeForm(FlaskForm):
-    firma_musteri_id = SelectField('Firma/Müşteri', coerce=int, choices=[], validators=[DataRequired()])
-    kasa_id = SelectField('Kasa/Banka', coerce=int, choices=[], validators=[DataRequired()])
+class OdemeForm(BaseForm):
+    firma_musteri_id = SelectField('Firma/Müşteri', coerce=int, default=0, validators=[DataRequired(message=secim_hata_mesaji)])
+    kasa_id = SelectField('Kasa/Banka', coerce=int, default=0, validators=[DataRequired(message="Lütfen geçerli bir kasa seçiniz.")])
     
-    tarih = DateField('Tarih', format='%Y-%m-%d', validators=[DataRequired()])
+    tarih = TRDateField('Tarih', format='%Y-%m-%d', validators=[DataRequired()])
     
-    # Kuruşlu giriş (Virgül destekli)
-    tutar = TRDecimalField('Tutar', places=2, validators=[
+    tutar = MoneyField('Tutar', places=2, validators=[
         DataRequired(message="Tutar alanı boş bırakılamaz."), 
         NumberRange(min=0.01, message="Tutar 0'dan büyük olmalıdır.")
     ])
     
-    # --- İŞTE EKSİK OLAN KISIM BURASIYDI ---
     yon = SelectField('İşlem Türü', choices=[
         ('tahsilat', 'Tahsilat (Para Girişi)'), 
         ('odeme', 'Ödeme (Para Çıkışı)')
     ], default='tahsilat', validators=[DataRequired()])
-    # ---------------------------------------
     
     fatura_no = StringField('Belge/Fatura No', validators=[Optional(), Length(max=50)])
-    vade_tarihi = DateField('Vade Tarihi', format='%Y-%m-%d', validators=[Optional()])
+    vade_tarihi = TRDateField('Vade Tarihi', format='%Y-%m-%d', validators=[Optional()])
     aciklama = StringField('Açıklama', validators=[Optional(), Length(max=250)])
     
     submit = SubmitField('Kaydet')
 
+    def validate_vade_tarihi(self, field):
+        """Vade tarihinin işlem tarihinden önce olmamasını sağlar."""
+        if field.data and self.tarih.data:
+            if field.data < self.tarih.data:
+                raise ValidationError("Vade tarihi, işlem tarihinden önce olamaz!")
+
 # -------------------------------------------------------------------------
-# 6. HizmetKaydiForm (Gelir / Gider Faturası)
+# 2. HizmetKaydiForm (Gelir / Gider Faturası)
 # -------------------------------------------------------------------------
-class HizmetKaydiForm(FlaskForm):
-    firma_id = SelectField('İlgili Firma', coerce=int, default=0, validators=[NumberRange(min=1, message=secim_hata_mesaji)])
-    tarih = DateField('İşlem Tarihi', format='%Y-%m-%d', validators=[InputRequired()])
+class HizmetKaydiForm(BaseForm):
+    firma_id = SelectField('İlgili Firma', coerce=int, default=0, validators=[DataRequired(message=secim_hata_mesaji)])
+    tarih = TRDateField('İşlem Tarihi', format='%Y-%m-%d', validators=[InputRequired()])
     
-    tutar = TRDecimalField('Tutar (KDV Dahil)', places=2, validators=[
+    tutar = MoneyField('Tutar (KDV Dahil)', places=2, validators=[
         InputRequired(message="Tutar zorunludur."), 
         NumberRange(min=0.01, message="Hatalı tutar.")
     ])
@@ -77,24 +60,30 @@ class HizmetKaydiForm(FlaskForm):
     aciklama = StringField('Hizmet/Ürün Açıklaması', validators=[InputRequired(), Length(max=250)])
     
     yon = SelectField('İşlem Yönü', choices=[
-        ('giden', 'Hizmet/Ürün Satışı (Firmayı Borçlandır - Gelir)'), 
-        ('gelen', 'Hizmet/Ürün Alımı (Firmayı Alacaklandır - Gider)')
+        ('giden', 'Hizmet/Ürün Satışı (Gelir)'), 
+        ('gelen', 'Hizmet/Ürün Alımı (Gider)')
     ], validators=[InputRequired()])
     
     fatura_no = StringField('Fatura No', validators=[Optional(), Length(max=50)])
-    vade_tarihi = DateField('Vade Tarihi', format='%Y-%m-%d', validators=[Optional()])
+    vade_tarihi = TRDateField('Vade Tarihi', format='%Y-%m-%d', validators=[Optional()])
     
     submit = SubmitField('Hizmet Kaydını Oluştur')
 
+    def validate_vade_tarihi(self, field):
+        if field.data and self.tarih.data:
+            if field.data < self.tarih.data:
+                raise ValidationError("Vade tarihi, işlem tarihinden önce olamaz!")
+
 # -------------------------------------------------------------------------
-# 10. KasaForm (Banka / Nakit Hesap Tanımı)
+# 3. KasaForm (Banka / Nakit Hesap Tanımı)
 # -------------------------------------------------------------------------
-class KasaForm(FlaskForm):
-    kasa_adi = StringField('Hesap Adı (Örn: Merkez Kasa, Garanti TL)', validators=[InputRequired(), Length(max=100)])
+class KasaForm(BaseForm):
+    kasa_adi = StringField('Hesap Adı', validators=[InputRequired(), Length(max=100)])
     
     tipi = SelectField('Hesap Tipi', choices=[
         ('nakit', 'Nakit Kasa'), 
-        ('banka', 'Banka Hesabı')
+        ('banka', 'Banka Hesabı'),
+        ('pos', 'POS Cihazı')
     ], default='banka', validators=[InputRequired()])
     
     para_birimi = SelectField('Para Birimi', choices=[
@@ -103,6 +92,40 @@ class KasaForm(FlaskForm):
         ('EUR', 'EUR (Euro)')
     ], default='TRY', validators=[InputRequired()])
     
-    bakiye = TRDecimalField('Açılış Bakiyesi', places=2, default=0.0, validators=[Optional()])
+    bakiye = MoneyField('Açılış Bakiyesi', places=2, default=0.0, validators=[Optional()])
     
     submit = SubmitField('Kaydet')
+
+# -------------------------------------------------------------------------
+# 4. KasaTransferForm
+# -------------------------------------------------------------------------
+class KasaTransferForm(BaseForm):
+    kaynak_kasa_id = SelectField('Kaynak Kasa', coerce=int, validators=[DataRequired()])
+    hedef_kasa_id = SelectField('Hedef Kasa', coerce=int, validators=[DataRequired()])
+    
+    tutar = MoneyField('Transfer Tutarı', places=2, validators=[
+        DataRequired(message="Tutar zorunludur."),
+        NumberRange(min=0.01, message="Geçerli bir tutar giriniz.")
+    ])
+    
+    submit = SubmitField('Transferi Tamamla')
+
+# -------------------------------------------------------------------------
+# 5. KasaHizliIslemForm
+# -------------------------------------------------------------------------
+class KasaHizliIslemForm(BaseForm):
+    kasa_id = SelectField('İlgili Kasa', coerce=int, validators=[DataRequired()])
+    
+    islem_yonu = SelectField('İşlem Yönü', choices=[
+        ('giris', 'Para Girişi'),
+        ('cikis', 'Para Çıkışı')
+    ], validators=[DataRequired()])
+    
+    tutar = MoneyField('İşlem Tutarı', places=2, validators=[
+        DataRequired(message="Tutar zorunludur."),
+        NumberRange(min=0.01, message="Geçerli bir tutar giriniz.")
+    ])
+    
+    aciklama = StringField('Kısa Açıklama', validators=[Optional(), Length(max=100)])
+    
+    submit = SubmitField('İşlemi Onayla')

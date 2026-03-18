@@ -94,7 +94,7 @@ def kiralama_formu_yazdir(rental_id):
 
         # Müşterinin sözleşme numarasını al (Firma modelindeki alan)
         gs_no = getattr(musteri, 'sozlesme_no', None) or "BELİRTİLMEDİ"
-
+        gs_trh = getattr(musteri, 'sozlesme_tarihi', None) or"BELİRTİLMEDİ"
         # 2. Kalemler Listesini Hazırla
         kalemler_listesi = []
         genel_toplam = 0
@@ -148,6 +148,7 @@ def kiralama_formu_yazdir(rental_id):
             'form_no': kiralama.kiralama_form_no,
             'gunun_tarihi': date.today().strftime('%d.%m.%Y'),
             'genel_sozlesme_no': gs_no,
+            'genel_sozlesme_trh': gs_trh if isinstance(gs_trh, str) else gs_trh.strftime('%d.%m.%Y'),
             'musteri_unvan': musteri.firma_adi.upper(),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_adres': musteri.iletisim_bilgileri or "",

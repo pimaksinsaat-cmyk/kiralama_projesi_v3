@@ -105,7 +105,7 @@ def kiralama_formu_yazdir(rental_id):
 
         # --- GENEL SÖZLEŞME KONTROLÜ ---
         gs_no = getattr(musteri, 'sozlesme_no', None)
-        
+        gs_trh = getattr(musteri, 'sozlesme_tarihi', None)
         if gs_no is None or str(gs_no).strip() == "":
             flash(f"Müşteri ({musteri.firma_adi}) için tanımlı bir Genel Sözleşme bulunamadı.", "danger")
             return redirect(url_for('kiralama.index'))
@@ -171,6 +171,7 @@ def kiralama_formu_yazdir(rental_id):
             'form_no': kiralama.kiralama_form_no, # Word belgesi içinde / görünebilir, sorun yok
             'gunun_tarihi': date.today().strftime('%d.%m.%Y'),
             'genel_sozlesme_no': gs_no,
+            'genel_sozlesme_trh': gs_trh if isinstance(gs_trh, str) else gs_trh.strftime('%d.%m.%Y'),
             'musteri_unvan': musteri.firma_adi.upper(),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_adres': musteri.iletisim_bilgileri or "",

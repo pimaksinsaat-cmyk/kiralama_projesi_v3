@@ -1,11 +1,18 @@
 from flask import render_template, redirect, url_for, flash, request
-from app import db
+from flask_login import current_user
+
 from app.cari import cari_bp
-from app.cari.forms import OdemeForm, HizmetKaydiForm, KasaForm
+# DÜZELTME: KasaHizliIslemForm ve KasaTransferForm import listesine eklendi
+from app.cari.forms import OdemeForm, HizmetKaydiForm, KasaForm, KasaTransferForm, KasaHizliIslemForm
 from app.cari.models import Kasa, Odeme, HizmetKaydi
 from app.firmalar.models import Firma
-from sqlalchemy import func, case
 
+# --- YENİ SERVİS MİMARİSİ İÇE AKTARIMLARI ---
+from app.services.cari_services import (
+    KasaService, OdemeService, HizmetKaydiService, 
+    CariRaporService, get_dahili_islem_firmasi
+)
+from app.services.base import ValidationError
 
 from decimal import Decimal
 from datetime import date, datetime
@@ -14,39 +21,9 @@ import traceback
 # -------------------------------------------------------------------------
 # 🛠️ YARDIMCI FONKSİYONLAR
 # -------------------------------------------------------------------------
-def clean_currency_input(value_str):
-    if not value_str: return Decimal('0.0')
-    # Noktayı silip virgülü noktaya çeviriyoruz
-    val = str(value_str).strip().replace('.', '').replace(',', '.')
-    try:
-        return Decimal(val)
-    except:
-        return Decimal('0.0')
-
-def bakiye_guncelle(kasa_id, tutar_decimal, yon='giris'):
-    kasa = Kasa.query.get(kasa_id)
-    if not kasa: return
-    if yon == 'giris': kasa.bakiye += tutar_decimal
-    else: kasa.bakiye -= tutar_decimal
-
-def get_dahili_islem_firmasi():
-    firma = Firma.query.filter_by(firma_adi='Dahili Kasa İşlemleri').first()
-    if not firma:
-        firma = Firma(
-            firma_adi='Dahili Kasa İşlemleri',
-            yetkili_adi='Sistem',              # ✅ ZORUNLU
-            iletisim_bilgileri='-',             # opsiyonel ama temiz
-            vergi_dairesi='-',
-            vergi_no='-',
-            is_musteri=True,
-            is_tedarikci=False,
-            is_active=True,
-            bakiye=0
-        )
-        db.session.add(firma)
-        db.session.commit()
-    return firma
-
+def get_actor():
+    """Audit Log için işlemi yapan kullanıcının ID'sini döndürür."""
+    return current_user.id if current_user.is_authenticated else None
 
 # -------------------------------------------------------------------------
 # 1. ÖDEME VE TAHSİLAT
@@ -57,8 +34,10 @@ def odeme_ekle():
     yon_param = request.args.get('yon', 'tahsilat')
     form = OdemeForm()
     
-    form.firma_musteri_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True).all()]
-    form.kasa_id.choices = [(k.id, f"{k.kasa_adi} ({k.bakiye} TL)") for k in Kasa.query.all()]
+    # Seçenekleri dinamik yükle (is_deleted kontrolü servis üzerinden değil modelden geçici olarak yapılıyor)
+    form.firma_musteri_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True, is_deleted=False).all()]
+    form.kasa_id.choices = [(k.id, f"{k.kasa_adi} ({k.bakiye} {k.para_birimi})") 
+                            for k in Kasa.query.filter_by(is_active=True, is_deleted=False).all()]
     
     if request.method == 'GET':
         if firma_id: form.firma_musteri_id.data = firma_id
@@ -67,66 +46,92 @@ def odeme_ekle():
 
     if form.validate_on_submit():
         try:
-            tutar = form.tutar.data
             yeni_odeme = Odeme(
                 firma_musteri_id=form.firma_musteri_id.data,
                 kasa_id=form.kasa_id.data,
                 tarih=form.tarih.data,
-                tutar=tutar,
+                tutar=form.tutar.data, # MoneyField sayesinde otomatik Decimal
                 yon=form.yon.data,
                 aciklama=form.aciklama.data,
-                # EKSİK OLAN SATIRLAR BURADA:
-                fatura_no=form.fatura_no.data,      # Formdan oku, modele yaz
-                vade_tarihi=form.vade_tarihi.data   # Formdan oku, modele yaz
+                fatura_no=form.fatura_no.data,
+                vade_tarihi=form.vade_tarihi.data
             )
             
-            k_yon = 'giris' if form.yon.data == 'tahsilat' else 'cikis'
-            bakiye_guncelle(form.kasa_id.data, tutar, k_yon)
-            
-            db.session.add(yeni_odeme)
-            db.session.commit()
-            
+            OdemeService.save(yeni_odeme, is_new=True, actor_id=get_actor())
             flash('İşlem başarıyla kaydedildi.', 'success')
             return redirect(url_for('firmalar.bilgi', id=form.firma_musteri_id.data))
             
+        except ValidationError as e:
+            flash(str(e), "warning")
         except Exception as e:
-            db.session.rollback()
             flash(f"Hata: {str(e)}", "danger")
             
     return render_template('cari/odeme_ekle.html', form=form)
 
+@cari_bp.route('/odeme/duzelt/<int:id>', methods=['GET', 'POST'])
+def odeme_duzelt(id):
+    odeme = OdemeService.get_by_id(id)
+    if not odeme or odeme.is_deleted:
+        flash("Kayıt bulunamadı", "danger")
+        return redirect(request.referrer or url_for('cari.finans_menu'))
+        
+    form = OdemeForm(obj=odeme)
+    form.firma_musteri_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True, is_deleted=False).all()]
+    form.kasa_id.choices = [(k.id, f"{k.kasa_adi} ({k.bakiye} {k.para_birimi})") 
+                            for k in Kasa.query.filter_by(is_active=True, is_deleted=False).all()]
+
+    if form.validate_on_submit():
+        try:
+            odeme.firma_musteri_id = form.firma_musteri_id.data
+            odeme.kasa_id = form.kasa_id.data
+            odeme.tarih = form.tarih.data
+            odeme.tutar = form.tutar.data
+            odeme.yon = form.yon.data
+            odeme.aciklama = form.aciklama.data
+            odeme.fatura_no = form.fatura_no.data
+            odeme.vade_tarihi = form.vade_tarihi.data
+            
+            # Servis katmanında after_save kancası eski bakiyeyi geri alıp yeniyi işler
+            OdemeService.save(odeme, is_new=False, actor_id=get_actor())
+            flash('İşlem güncellendi.', 'success')
+            return redirect(url_for('firmalar.bilgi', id=odeme.firma_musteri_id))
+        except ValidationError as e:
+            flash(str(e), "warning")
+            
+    return render_template('cari/odeme_ekle.html', form=form, title="Ödeme Düzenle")
+
 @cari_bp.route('/odeme/sil/<int:id>', methods=['POST'])
 def odeme_sil(id):
-    odeme = Odeme.query.get_or_404(id)
+    odeme = OdemeService.get_by_id(id)
+    if not odeme:
+        flash('Ödeme kaydı bulunamadı.', 'danger')
+        return redirect(request.referrer or url_for('cari.kasa_listesi'))
+        
     f_id = odeme.firma_musteri_id
     try:
-        # Kasa bakiyesini tersine çeviriyoruz (Ters işlemle geri al)
-        # Eğer tahsilatsa (giriş yapılmıştı), şimdi çıkış yapıyoruz.
-        g_yon = 'cikis' if odeme.yon == 'tahsilat' else 'giris'
-        bakiye_guncelle(odeme.kasa_id, odeme.tutar, g_yon)
-        
-        db.session.delete(odeme)
-        db.session.commit()
+        OdemeService.delete(id, actor_id=get_actor())
         flash('Ödeme/Tahsilat kaydı silindi ve kasa bakiyesi düzeltildi.', 'success')
+    except ValidationError as e:
+        flash(str(e), "warning")
     except Exception as e:
-        db.session.rollback()
         flash(f'Hata: {str(e)}', 'danger')
+        
     return redirect(url_for('firmalar.bilgi', id=f_id))
 
 # -------------------------------------------------------------------------
-# 2. HİZMET / FATURA (NAKLİYE KORUMALI)
+# 2. HİZMET / FATURA
 # -------------------------------------------------------------------------
 @cari_bp.route('/hizmet/ekle', methods=['GET', 'POST'])
 def hizmet_ekle():
     firma_id = request.args.get('firma_id', type=int)
     form = HizmetKaydiForm()
-    form.firma_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True).all()]
+    form.firma_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True, is_deleted=False).all()]
+    
     if request.method == 'GET':
         if firma_id: form.firma_id.data = firma_id
         form.tarih.data = date.today()
 
     if form.validate_on_submit():
-        
         try:
             yeni_hizmet = HizmetKaydi(
                 firma_id=form.firma_id.data,
@@ -136,48 +141,26 @@ def hizmet_ekle():
                 aciklama=form.aciklama.data,
                 fatura_no=form.fatura_no.data
             )
-            db.session.add(yeni_hizmet)
-            db.session.commit()
+            HizmetKaydiService.save(yeni_hizmet, actor_id=get_actor())
             flash('Fatura kaydedildi.', 'success')
             return redirect(url_for('firmalar.bilgi', id=form.firma_id.data))
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Hata: {e}", "danger")
+        except ValidationError as e:
+            flash(str(e), "warning")
+            
     return render_template('cari/hizmet_ekle.html', form=form)
-
-@cari_bp.route('/hizmet/sil/<int:id>', methods=['POST'])
-def hizmet_sil(id):
-    hizmet = HizmetKaydi.query.get_or_404(id)
-    f_id = hizmet.firma_id
-    
-    # Nakliye modülü ile bağlantısı varsa silinmesini engelliyoruz (Senin yapındaki koruma)
-    if hasattr(hizmet, 'nakliye_id') and hizmet.nakliye_id:
-        flash('Nakliye bağlantılı kayıtlar buradan silinemez!', 'warning')
-        return redirect(url_for('firmalar.bilgi', id=f_id))
-        
-    try:
-        db.session.delete(hizmet)
-        db.session.commit()
-        flash('Hizmet/Fatura kaydı silindi.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Hata: {str(e)}', 'danger')
-    return redirect(url_for('firmalar.bilgi', id=f_id))
 
 @cari_bp.route('/hizmet/duzelt/<int:id>', methods=['GET', 'POST'])
 def hizmet_duzelt(id):
-    # 1. Kaydı bul veya 404 döndür
-    hizmet = HizmetKaydi.query.get_or_404(id)
+    hizmet = HizmetKaydiService.get_by_id(id)
+    if not hizmet or hizmet.is_deleted:
+        flash('Kayıt bulunamadı', 'danger')
+        return redirect(request.referrer)
     
-    # 2. Formu mevcut verilerle doldur (obj=hizmet)
     form = HizmetKaydiForm(obj=hizmet)
-    
-    # 3. Firma listesini dropdown için tekrar yükle
-    form.firma_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True).all()]
+    form.firma_id.choices = [(f.id, f.firma_adi) for f in Firma.query.filter_by(is_active=True, is_deleted=False).all()]
 
     if form.validate_on_submit():
         try:
-            # 4. Formdaki verileri modele aktar
             hizmet.firma_id = form.firma_id.data
             hizmet.tarih = form.tarih.data
             hizmet.tutar = form.tutar.data
@@ -185,47 +168,111 @@ def hizmet_duzelt(id):
             hizmet.aciklama = form.aciklama.data
             hizmet.fatura_no = form.fatura_no.data
             
-            db.session.commit()
-            flash(f'{hizmet.fatura_no or "Hizmet"} kaydı başarıyla güncellendi.', 'success')
-            
-            # 5. İşlem bittiğinde firmanın detay sayfasına geri dön
+            HizmetKaydiService.save(hizmet, is_new=False, actor_id=get_actor())
+            flash('Fatura güncellendi.', 'success')
             return redirect(url_for('firmalar.bilgi', id=hizmet.firma_id))
+        except ValidationError as e:
+            flash(str(e), "warning")
             
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Güncelleme sırasında bir hata oluştu: {str(e)}", "danger")
-            
-    return render_template('cari/hizmet_ekle.html', form=form, title="cari/hizmet_duzelt", hizmet=hizmet)
+    return render_template('cari/hizmet_ekle.html', form=form, title="Fatura Düzenle")
+
+@cari_bp.route('/hizmet/sil/<int:id>', methods=['POST'])
+def hizmet_sil(id):
+    hizmet = HizmetKaydiService.get_by_id(id)
+    if not hizmet: return redirect(request.referrer)
+        
+    f_id = hizmet.firma_id
+    try:
+        HizmetKaydiService.delete(id, actor_id=get_actor())
+        flash('Fatura kaydı silindi.', 'success')
+    except ValidationError as e:
+        flash(str(e), 'warning')
+        
+    return redirect(url_for('firmalar.bilgi', id=f_id))
+
 # -------------------------------------------------------------------------
 # 3. KASA YÖNETİMİ VE TRANSFER
 # -------------------------------------------------------------------------
 @cari_bp.route('/kasa/listesi')
 def kasa_listesi():
-    kasalar = Kasa.query.filter_by(is_active=True).all()
-    return render_template('cari/kasa_listesi.html', kasalar=kasalar)
+    kasalar = KasaService.find_by(is_active=True, is_deleted=False)
+    
+    # Modal transfer formu
+    transfer_form = KasaTransferForm()
+    kasa_choices = [(k.id, f"{k.kasa_adi} ({k.para_birimi})") for k in kasalar]
+    transfer_form.kaynak_kasa_id.choices = kasa_choices
+    transfer_form.hedef_kasa_id.choices = kasa_choices
+    
+    # Modal hızlı işlem formu
+    hizli_form = KasaHizliIslemForm()
+    hizli_form.kasa_id.choices = kasa_choices
+
+    return render_template('cari/kasa_listesi.html', 
+                           kasalar=kasalar, 
+                           form=transfer_form, 
+                           hizli_form=hizli_form)
 
 @cari_bp.route('/kasa/transfer', methods=['POST'])
 def kasa_transfer():
-    try:
-        k_id = request.form.get('kaynak_kasa_id', type=int)
-        h_id = request.form.get('hedef_kasa_id', type=int)
-        tutar = clean_currency_input(request.form.get('tutar'))
-        kaynak = Kasa.query.get_or_404(k_id)
-        hedef = Kasa.query.get_or_404(h_id)
-        if kaynak.bakiye < tutar:
-            flash('Yetersiz bakiye!', 'danger')
-            return redirect(url_for('cari.kasa_listesi'))
-        
-        dahili = get_dahili_islem_firmasi()
-        db.session.add(Odeme(firma_musteri_id=dahili.id, kasa_id=k_id, tarih=date.today(), tutar=tutar, yon='odeme', aciklama=f"Transfer -> {hedef.kasa_adi}"))
-        bakiye_guncelle(k_id, tutar, 'cikis')
-        db.session.add(Odeme(firma_musteri_id=dahili.id, kasa_id=h_id, tarih=date.today(), tutar=tutar, yon='tahsilat', aciklama=f"Transfer <- {kaynak.kasa_adi}"))
-        bakiye_guncelle(h_id, tutar, 'giris')
-        db.session.commit()
-        flash('Transfer başarılı.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Hata: {e}", "danger")
+    kasalar = KasaService.find_by(is_active=True, is_deleted=False)
+    form = KasaTransferForm()
+    kasa_choices = [(k.id, k.kasa_adi) for k in kasalar]
+    form.kaynak_kasa_id.choices = kasa_choices
+    form.hedef_kasa_id.choices = kasa_choices
+
+    if form.validate_on_submit():
+        try:
+            KasaService.transfer_yap(
+                form.kaynak_kasa_id.data, 
+                form.hedef_kasa_id.data, 
+                form.tutar.data, 
+                actor_id=get_actor()
+            )
+            flash('Para transferi başarıyla tamamlandı.', 'success')
+        except ValidationError as e:
+            flash(str(e), "warning")
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"{getattr(form, field).label.text}: {error}", "danger")
+                
+    return redirect(url_for('cari.kasa_listesi'))
+
+@cari_bp.route('/kasa/hizli_islem', methods=['POST'])
+def kasa_hizli_islem():
+    """
+    KasaHizliIslemForm kullanarak manuel parse işlemlerinden kurtulduk.
+    """
+    form = KasaHizliIslemForm()
+    kasalar = KasaService.find_by(is_active=True, is_deleted=False)
+    form.kasa_id.choices = [(k.id, k.kasa_adi) for k in kasalar]
+
+    if form.validate_on_submit():
+        try:
+            dahili = get_dahili_islem_firmasi()
+            yon = 'tahsilat' if form.islem_yonu.data == 'giris' else 'odeme'
+            
+            odeme = Odeme(
+                firma_musteri_id=dahili.id,
+                kasa_id=form.kasa_id.data,
+                tarih=date.today(),
+                tutar=form.tutar.data, # MoneyField sayesinde temiz Decimal gelir
+                yon=yon,
+                aciklama=f"Hızlı Kasa İşlemi: {form.aciklama.data}"
+            )
+
+            OdemeService.save(odeme, actor_id=get_actor())
+            flash("Kasa işlemi başarıyla kaydedildi", "success")
+
+        except ValidationError as e:
+            flash(str(e), "warning")
+        except Exception as e:
+            flash(f"Hızlı kasa işlem hatası: {str(e)}", "danger")
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"{getattr(form, field).label.text}: {error}", "danger")
+
     return redirect(url_for('cari.kasa_listesi'))
 
 @cari_bp.route('/kasa/ekle', methods=['GET', 'POST'])
@@ -233,57 +280,68 @@ def kasa_ekle():
     form = KasaForm()
     if form.validate_on_submit():
         try:
-            # Bakiyeyi bizim zırhlı clean_currency_input ile temizliyoruz
             yeni_kasa = Kasa(
                 kasa_adi=form.kasa_adi.data,
-                bakiye=form.bakiye.data or 0, # Başlangıç bakiyesi
-                is_active=True
+                tipi=form.tipi.data,
+                para_birimi=form.para_birimi.data,
+                bakiye=form.bakiye.data or 0
             )
-            db.session.add(yeni_kasa)
-            db.session.commit()
+            KasaService.save(yeni_kasa, actor_id=get_actor())
             flash(f'{yeni_kasa.kasa_adi} başarıyla oluşturuldu.', 'success')
             return redirect(url_for('cari.kasa_listesi'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Kasa eklenirken hata oluştu: {str(e)}", "danger")
+        except ValidationError as e:
+            flash(str(e), "warning")
             
-    return render_template('cari/kasa_ekle.html', form=form, title="Yeni Kasa/Banka Ekle")
+    return render_template('cari/kasa_ekle.html', form=form, title="Yeni Kasa Ekle")
 
 @cari_bp.route('/kasa/duzelt/<int:id>', methods=['GET', 'POST'])
 def kasa_duzelt(id):
-    kasa = Kasa.query.get_or_404(id)
-    # obj=kasa diyerek mevcut verileri form kutularına otomatik dolduruyoruz
+    kasa = KasaService.get_by_id(id)
+    if not kasa or kasa.is_deleted:
+        flash("Kasa bulunamadı", "danger")
+        return redirect(url_for('cari.kasa_listesi'))
+        
     form = KasaForm(obj=kasa) 
-
-    diger_kasalar = Kasa.query.filter(
-         Kasa.id != kasa.id,
-         Kasa.para_birimi == kasa.para_birimi,
-         Kasa.is_active == True
-    ).all()
 
     if form.validate_on_submit():
         try:
             kasa.kasa_adi = form.kasa_adi.data
-            # Not: Bakiyeyi buradan manuel değiştirmek muhasebe dengesini bozabilir, 
-            # ama istersen bu satırı da aktif edebilirsin:
-            # kasa.bakiye = form.bakiye.data
             kasa.tipi = form.tipi.data
             kasa.para_birimi = form.para_birimi.data
-
-
-
-            db.session.commit()
-            flash(f'{kasa.kasa_adi} bilgileri güncellendi.', 'success')
+            KasaService.save(kasa, is_new=False, actor_id=get_actor())
+            flash('Kasa bilgileri güncellendi.', 'success')
             return redirect(url_for('cari.kasa_listesi'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f"Güncelleme sırasında hata oluştu: {str(e)}", "danger")
-
-        
+        except ValidationError as e:
+            flash(str(e), "warning")
             
-    return render_template('cari/kasa_duzelt.html', form=form,kasa=kasa, diger_kasalar=diger_kasalar, title="Kasa/Banka Düzenle")
+    return render_template('cari/kasa_ekle.html', form=form, title="Kasa Düzenle")
+
+@cari_bp.route('/kasa/sil/<int:id>', methods=['POST'])
+def kasa_sil(id):
+    hedef_kasa_id = request.form.get('hedef_kasa_id', type=int)
+    try:
+        KasaService.kasa_kapat_ve_devret(id, hedef_kasa_id, actor_id=get_actor())
+        flash('Kasa hesabı başarıyla kapatıldı.', 'success')
+    except ValidationError as e:
+        flash(str(e), 'warning')
+    except Exception as e:
+        flash(f"Hata: {str(e)}", 'danger')
+        
+    return redirect(url_for('cari.kasa_listesi'))
+
+@cari_bp.route('/kasa/hareketleri/<int:id>')
+def kasa_hareketleri(id):
+    kasa = KasaService.get_by_id(id)
+    if not kasa or kasa.is_deleted:
+        flash("Kasa bulunamadı", "danger")
+        return redirect(url_for('cari.kasa_listesi'))
+
+    hareketler = Odeme.query.filter_by(kasa_id=kasa.id, is_deleted=False)\
+                      .order_by(Odeme.tarih.desc(), Odeme.id.desc()).all()
+    return render_template('cari/kasa_hareketleri.html', kasa=kasa, hareketler=hareketler)
+
 # -------------------------------------------------------------------------
-# 4. RAPORLAR VE MENÜ (ANA SAYFA İÇİN KRİTİK)
+# 4. RAPORLAR VE MENÜ
 # -------------------------------------------------------------------------
 @cari_bp.route('/finans-menu')
 def finans_menu():
@@ -291,201 +349,9 @@ def finans_menu():
 
 @cari_bp.route('/cari-durum-raporu')
 def cari_durum_raporu():
-    """SQL Aggregation kullanarak tüm firma bakiyelerini tek sorguda ve hatasız hesaplar."""
     try:
-        # 1. Hizmet Kayıtlarını Topla (Firma bazlı)
-        h_ozet = db.session.query(
-            HizmetKaydi.firma_id,
-            func.sum(case((HizmetKaydi.yon == 'giden', HizmetKaydi.tutar), else_=0)).label('b'),
-            func.sum(case((HizmetKaydi.yon == 'gelen', HizmetKaydi.tutar), else_=0)).label('a')
-        ).group_by(HizmetKaydi.firma_id).subquery()
-
-        # 2. Ödemeleri Topla (Firma bazlı)
-        o_ozet = db.session.query(
-            Odeme.firma_musteri_id,
-            func.sum(case((Odeme.yon == 'odeme', Odeme.tutar), else_=0)).label('b'),
-            func.sum(case((Odeme.yon == 'tahsilat', Odeme.tutar), else_=0)).label('a')
-        ).group_by(Odeme.firma_musteri_id).subquery()
-
-        # 3. Ana Sorgu (Coalesce ile SQL seviyesinde None kontrolü)
-        sorgu = db.session.query(
-            Firma.id, 
-            Firma.firma_adi,
-            (func.coalesce(h_ozet.c.b, 0) + func.coalesce(o_ozet.c.b, 0)).label('tb'),
-            (func.coalesce(h_ozet.c.a, 0) + func.coalesce(o_ozet.c.a, 0)).label('ta')
-        ).outerjoin(h_ozet, Firma.id == h_ozet.c.firma_id)\
-         .outerjoin(o_ozet, Firma.id == o_ozet.c.firma_musteri_id)\
-         .filter(Firma.is_active == True).all()
-
-        rapor = []
-        # Decimal başlangıç değerleri
-        toplamlar = {'borc': Decimal('0.00'), 'alacak': Decimal('0.00'), 'bakiye': Decimal('0.00')}
-
-        for r in sorgu:
-            # Python seviyesinde ikinci bir koruma katmanı (Hata alınan yerin çözümü)
-            # r.tb veya r.ta None gelirse 0.00 olarak kabul et
-            val_borc = Decimal(str(r.tb)) if r.tb is not None else Decimal('0.00')
-            val_alacak = Decimal(str(r.ta)) if r.ta is not None else Decimal('0.00')
-            
-            # Net Bakiye Hesabı: $Bakiye = Borç - Alacak$
-            bakiye_hesap = val_borc - val_alacak
-
-            # Genel Toplamları Güncelle
-            toplamlar['borc'] += val_borc
-            toplamlar['alacak'] += val_alacak
-            toplamlar['bakiye'] += bakiye_hesap
-
-            rapor.append({
-                'id': r.id,
-                'firma_adi': r.firma_adi,
-                'borc': val_borc,
-                'alacak': val_alacak,
-                'bakiye': bakiye_hesap
-            })
-
-        return render_template('cari/cari_durum_raporu.html', rapor=rapor, genel_toplam=toplamlar)
-
-    except Exception as e:
-        db.session.rollback()
-        traceback.print_exc()
-        flash(f"Rapor hazırlanırken bir hata oluştu: {str(e)}", "danger")
+        rapor, genel_toplam = CariRaporService.get_durum_raporu()
+        return render_template('cari/cari_durum_raporu.html', rapor=rapor, genel_toplam=genel_toplam)
+    except ValidationError as e:
+        flash(str(e), "danger")
         return redirect(url_for('cari.finans_menu'))
-
-@cari_bp.route('/kasa/sil/<int:id>', methods=['POST'])
-def kasa_sil(id):
-    kasa = Kasa.query.get_or_404(id)
-
-    try:
-        mevcut_bakiye = kasa.bakiye or 0
-        hedef_kasa_id = request.form.get('hedef_kasa_id', type=int)
-
-        # Eğer bakiye varsa hedef kasa ZORUNLU
-        if mevcut_bakiye != 0:
-            if not hedef_kasa_id:
-                flash('Bakiyesi olan kasa silinemez. Lütfen hedef kasa seçin.', 'danger')
-                return redirect(url_for('cari.kasa_duzelt', id=id))
-
-            hedef = Kasa.query.get_or_404(hedef_kasa_id)
-
-            if hedef.para_birimi != kasa.para_birimi:
-                flash('Hedef kasa para birimi uyumsuz!', 'danger')
-                return redirect(url_for('cari.kasa_duzelt', id=id))
-
-            dahili = get_dahili_islem_firmasi()
-
-            # Çıkış (eski kasa)
-            db.session.add(Odeme(
-                firma_musteri_id=dahili.id,
-                kasa_id=kasa.id,
-                tarih=date.today(),
-                tutar=mevcut_bakiye,
-                yon='odeme',
-                aciklama=f"Kasa kapatma → {hedef.kasa_adi}"
-            ))
-
-            # Giriş (hedef kasa)
-            db.session.add(Odeme(
-                firma_musteri_id=dahili.id,
-                kasa_id=hedef.id,
-                tarih=date.today(),
-                tutar=mevcut_bakiye,
-                yon='tahsilat',
-                aciklama=f"Kasa devri ← {kasa.kasa_adi}"
-            ))
-
-            bakiye_guncelle(kasa.id, mevcut_bakiye, 'cikis')
-            bakiye_guncelle(hedef.id, mevcut_bakiye, 'giris')
-
-        # Soft delete (önerilen)
-        kasa.is_active = False
-        db.session.commit()
-
-        flash(f'{kasa.kasa_adi} hesabı kapatıldı.', 'success')
-        return redirect(url_for('cari.kasa_listesi'))
-
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Kasa silinirken hata oluştu: {str(e)}", 'danger')
-        return redirect(url_for('cari.kasa_listesi'))
-
-@cari_bp.route('/kasa/hizli_islem', methods=['POST'])
-def kasa_hizli_islem():
-    try:
-        kasa_id = request.form.get('kasa_id', type=int)
-        islem_yonu = request.form.get('islem_yonu')  # giris / cikis
-        tutar = clean_currency_input(request.form.get('tutar'))
-        aciklama = request.form.get('aciklama', '')
-
-        if not kasa_id or tutar <= 0:
-            flash("Geçersiz işlem bilgileri", "danger")
-            return redirect(url_for('cari.kasa_listesi'))
-
-        kasa = Kasa.query.filter_by(id=kasa_id, is_active=True).first_or_404()
-
-        if islem_yonu not in ('giris', 'cikis'):
-            flash("Geçersiz işlem yönü", "danger")
-            return redirect(url_for('cari.kasa_listesi'))
-
-        if islem_yonu == 'cikis' and kasa.bakiye < tutar:
-            flash("Yetersiz kasa bakiyesi", "danger")
-            return redirect(url_for('cari.kasa_listesi'))
-
-        dahili = get_dahili_islem_firmasi()
-
-        # Odeme yönü belirle
-        yon = 'tahsilat' if islem_yonu == 'giris' else 'odeme'
-
-        odeme = Odeme(
-            firma_musteri_id=dahili.id,
-            kasa_id=kasa.id,
-            tarih=date.today(),
-            tutar=tutar,
-            yon=yon,
-            aciklama=f"Hızlı Kasa İşlemi: {aciklama}"
-        )
-
-        # Bakiye güncelle
-        bakiye_guncelle(kasa.id, tutar, islem_yonu)
-
-        db.session.add(odeme)
-        db.session.commit()
-
-        flash("Kasa işlemi başarıyla kaydedildi", "success")
-
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Hızlı kasa işlem hatası: {str(e)}", "danger")
-
-    return redirect(url_for('cari.kasa_listesi'))
-
-
-@cari_bp.route('/kasa/hareketleri/<int:id>')
-def kasa_hareketleri(id):
-    # 1️⃣ Kasa var mı kontrol et
-    kasa = Kasa.query.get_or_404(id)
-
-    # 2️⃣ Bu kasaya ait tüm işlemleri çek
-    hareketler = (
-        Odeme.query
-        .filter(Odeme.kasa_id == kasa.id)
-        .order_by(Odeme.tarih.desc(), Odeme.id.desc())
-        .all()
-    )
-
-    # 3️⃣ Template'e gönder
-    return render_template('cari/kasa_hareketleri.html',kasa=kasa,hareketler=hareketler,now=datetime.now())
-
-@cari_bp.route('/odeme/duzelt/<int:id>', methods=['GET', 'POST'])
-def odeme_duzelt(id):
-    odeme = Odeme.query.get_or_404(id)
-
-    # ŞİMDİLİK sadece bilgi verip geri döndürüyoruz
-    flash(
-        f"{odeme.tarih} tarihli {odeme.tutar} tutarındaki ödeme için "
-        f"düzeltme ekranı henüz aktif değil.",
-        "info"
-    )
-
-    # Geldiği yere geri dön (referrer yoksa kasa listesi)
-    return redirect(request.referrer or url_for('cari.kasa_listesi'))
-

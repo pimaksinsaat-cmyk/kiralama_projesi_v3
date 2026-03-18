@@ -78,6 +78,9 @@
             <a href="{{ url_for('firmalar.ekle') }}" class="btn btn-success shadow-sm px-4 btn-sm">
                 <i class="fas fa-plus me-2"></i>Yeni Firma Ekle
             </a>
+            <a href="{{ url_for('firmalar.pasif_index') }}" class="btn btn-outline-danger">
+                <i class="fas fa-archive me-1"></i> Arşivlenmiş Firmalar
+            </a>
         </div>
     </div>
     
@@ -112,6 +115,10 @@
             </thead>
             <tbody>
                 {% for firma in firmalar %}
+                
+                {# DAHİLİ SİSTEM FİRMASINI TABLODA GİZLEME KURALI #}
+                {% if firma.firma_adi != 'DAHİLİ İŞLEMLER' and firma.firma_adi != 'Dahili Kasa İşlemleri' %}
+                
                 <tr class="firma-satiri"
                     data-firma-id="{{ firma.id }}"
                     data-firma-adi="{{ firma.firma_adi }}"
@@ -125,7 +132,8 @@
                     data-sil-url="{{ url_for('firmalar.sil', id=firma.id) }}"
                     data-sozlesme-hazirla-url="{{ url_for('firmalar.sozlesme_hazirla', id=firma.id) }}"
                     data-sozlesme-yazdir-url="{{ url_for('dokumanlar.ps_yazdir', firma_id=firma.id) }}"
-                    data-kiralama-url="{{ url_for('kiralama.index', q=firma.firma_adi) }}">
+                    data-kiralama-url="{{ url_for('kiralama.index', q=firma.firma_adi) }}"
+                    data-hakedis-url="{{ url_for('fatura.olustur') }}">
                     
                     <td>
                         <span class="me-2">{{ "🟢" if firma.imza_yetkisi_kontrol_edildi else "🔴" }}</span>
@@ -162,6 +170,9 @@
                         {% if firma.is_tedarikci %}<span class="badge bg-warning" title="Tedarikçi">T</span>{% endif %}
                     </td>
                 </tr>
+                
+                {% endif %}
+                
                 {% else %}
                 <tr>
                     <td colspan="7" class="text-center py-5 text-muted">
@@ -211,6 +222,10 @@
     <a href="#" class="context-menu-item" id="menu-bilgi">
         <i class="fas fa-file-invoice-dollar me-3 text-primary"></i> Cari Detayı & Ekstre
     </a>
+    <!-- YENİ HAKEDİŞ LİNKİ -->
+    <a href="#" class="context-menu-item" id="menu-hakedis" style="color: #2b6cb0; font-weight: 600;">
+        <i class="fas fa-magic me-3 text-info"></i> Hakediş Oluştur
+    </a>
     <a href="#" class="context-menu-item" id="menu-sozlesme-hazirla" style="color: #2b6cb0; font-weight: 600;">
         <i class="fas fa-file-signature me-3"></i> Sözleşme Hazırla (PS)
     </a>
@@ -251,6 +266,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Menü öğeleri
     const items = {
         bilgi: document.getElementById('menu-bilgi'),
+        hakedis: document.getElementById('menu-hakedis'),
         sozlesme: document.getElementById('menu-sozlesme-hazirla'),
         yazdir: document.getElementById('menu-sozlesme-yazdir'),
         klasor: document.getElementById('menu-klasor-ac'),
@@ -277,6 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
             klasor: row.dataset.klasorAdi,
             urls: {
                 bilgi: row.dataset.bilgiUrl,
+                hakedis: row.dataset.hakedisUrl,
                 duzenle: row.dataset.duzenleUrl,
                 sil: row.dataset.silUrl,
                 ps_hazirla: row.dataset.sozlesmeHazirlaUrl,
@@ -287,6 +304,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Linkleri ve Görünürlüğü Ayarla
         items.bilgi.href = activeData.urls.bilgi;
+        items.hakedis.href = activeData.urls.hakedis;
         items.duzenle.href = activeData.urls.duzenle;
         items.kiralama.href = activeData.urls.kiralama;
 

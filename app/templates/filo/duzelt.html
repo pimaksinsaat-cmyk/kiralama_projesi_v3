@@ -26,6 +26,19 @@
 <div class="container">
     <h2>"{{ ekipman.kod }}" Makinesini Düzelt</h2>
     
+    <div class="alert alert-info text-center py-2 mb-4">
+        <strong>Mevcut Durumu:</strong> 
+        {% if ekipman.calisma_durumu == 'kirada' %}
+            <span class="badge bg-success">Kirada (Sahada)</span>
+        {% elif ekipman.calisma_durumu == 'bosta' %}
+            <span class="badge bg-secondary">Boşta (Depoda)</span>
+        {% elif ekipman.calisma_durumu == 'serviste' %}
+            <span class="badge bg-warning text-dark">Serviste</span>
+        {% else %}
+            <span class="badge bg-danger">{{ ekipman.calisma_durumu|upper }}</span>
+        {% endif %}
+    </div>
+    
     <form action="" method="POST" novalidate>
         {{ form.hidden_tag() }} 
         
@@ -41,6 +54,21 @@
             {{ form.kod.label(text="Makine Kodu :") }}
             {{ form.kod(class="form-control") }}
             {% for error in form.kod.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
+        </div>
+
+        <div class="form-group p-3 bg-light border rounded mb-3">
+            <label for="sube_id" class="text-primary" style="font-weight: 700;">Bulunduğu Şube / Depo :</label>
+            <select name="sube_id" id="sube_id" class="form-control border-primary" {% if ekipman.calisma_durumu == 'kirada' %}disabled{% endif %}>
+                <option value="" {% if not ekipman.sube_id %}selected{% endif %}>Bilinmiyor / Şube Dışı</option>
+                {% for sube in subeler %}
+                    <option value="{{ sube.id }}" {% if ekipman.sube_id == sube.id %}selected{% endif %}>{{ sube.isim }}</option>
+                {% endfor %}
+            </select>
+            {% if ekipman.calisma_durumu == 'kirada' %}
+                <small class="text-danger mt-1 d-block fw-bold"><i class="fas fa-exclamation-triangle"></i> Makine şu an sahada (kirada) olduğu için şubesi değiştirilemez!</small>
+            {% else %}
+                <small class="text-muted mt-1 d-block">Makineyi manuel olarak başka bir depoya transfer edebilirsiniz.</small>
+            {% endif %}
         </div>
 
         <div class="form-group">
@@ -81,7 +109,6 @@
             {% for error in form.marka.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
         </div>
 
-        <!-- MODEL ALANI -->
         <div class="form-group">
              {{ form.model.label(text="Modeli :") }}
              {{ form.model(id="model", class="form-control") }}
@@ -107,18 +134,22 @@
         </div>
         
         <div class="form-group">
-            {{ form.uretim_tarihi.label(text="Üretim Tarihi (Yıl):") }}
-            {{ form.uretim_tarihi(id="uretim_tarihi", class="form-control", type="number", step="1", min="1990") }}
-            {% for error in form.uretim_tarihi.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
+            {{ form.uretim_yili.label(text="Üretim Tarihi (Yıl):") }}
+            {{ form.uretim_yili(id="uretim_yili", class="form-control", type="number", step="1", min="1990") }}
+            {% for error in form.uretim_yili.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
         </div>
-
+        <div class="form-group">
+            {{ form.sube_id.label(text="Kayıt Şubesi :") }}
+            {{ form.sube_id(class="form-control") }}
+            <small style="color: #666;">Makinenin fiziksel olarak bağlı olduğu depoyu seçiniz.</small>
+            {% for error in form.sube_id.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
+        </div>
         <fieldset class="form-group" style="border: 1px solid #dee2e6; padding: 1.5rem; margin-top: 20px; border-radius: 5px;">
             <legend style="font-size: 1.2em; font-weight: 500; width: auto; padding: 0 10px; margin-left: 5px;">Makine Maliyeti</legend>
             <div class="row">
                 <div class="col-md-8 form-group">
                     {{ form.giris_maliyeti.label(text="Giriş Maliyeti (Satın Alma Fiyatı):") }}
                     
-                    <!-- JS Formatlaması kaldırıldı, manuel giriş -->
                     {{ form.giris_maliyeti(class="form-control", placeholder="Örn: 15000 veya 15000,50", id="giris_maliyeti", autocomplete="off") }} 
                     
                     <small style="color: #555; margin-top: 5px; display: block;">
@@ -141,9 +172,8 @@
     </form>
 </div>
 
-<!-- Sadece Tarih Otomatik Doldurma (Sadeleştirildi) -->
 <script>
-    const yilInput = document.getElementById('uretim_tarihi');
+    const yilInput = document.getElementById('uretim_yili');
     // Mevcut bir değer yoksa bugünün yılını koy (düzenlemede değer varsa dokunma)
     if (yilInput && !yilInput.value) { 
         const bugunYil = new Date().getFullYear();

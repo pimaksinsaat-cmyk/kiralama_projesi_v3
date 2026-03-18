@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    :root {
+        --pimaks-blue: #0d47a1;
+        --pimaks-light-blue: #e3f2fd;
+        --success-green: #2ecc71;
+        --warning-orange: #f39c12;
+        --text-dark: #2c3e50;
+    }
+
+    .dashboard-container {
+        padding: 2rem;
+        background-color: #f4f7f9;
+        min-height: 100vh;
+    }
+
+    .page-title-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 1rem;
+    }
+
+    .page-title-section h1 {
+        color: var(--text-dark);
+        font-weight: 700;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    /* Şube Kartları Izgarası */
+    .sube-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 2rem;
+    }
+
+    .sube-card {
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+        border: 1px solid #edf2f7;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .sube-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+    }
+
+    /* Kart Başlığı */
+    .card-header {
+        padding: 1.5rem;
+        background: linear-gradient(to right, #ffffff, #f8f9fa);
+        border-bottom: 1px solid #f1f1f1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .sube-name {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--pimaks-blue);
+    }
+
+    .status-badge {
+        width: 10px;
+        height: 10px;
+        background-color: var(--success-green);
+        border-radius: 50%;
+        box-shadow: 0 0 8px var(--success-green);
+    }
+
+    /* İstatistik Alanı */
+    .stat-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        padding: 1rem 1.5rem;
+        background-color: #fafbfc;
+        text-align: center;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--text-dark);
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        color: #7f8c8d;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* İletişim Bilgileri */
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    .info-line {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 0.8rem;
+        color: #5d6d7e;
+        font-size: 0.95rem;
+    }
+
+    .info-line i { width: 20px; color: var(--pimaks-blue); }
+
+    /* Alt Butonlar */
+    .card-footer {
+        padding: 1rem 1.5rem;
+        display: flex;
+        gap: 10px;
+        background-color: #f8f9fa;
+    }
+
+    .btn-pimaks {
+        flex: 1;
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.85rem;
+        transition: 0.2s;
+    }
+
+    .btn-maps { background-color: var(--pimaks-light-blue); color: var(--pimaks-blue); }
+    .btn-manage { background-color: #eceff1; color: #455a64; }
+    .btn-pimaks:hover { filter: brightness(0.95); }
+
+    .add-button {
+        background-color: var(--pimaks-blue);
+        color: white;
+        padding: 12px 25px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(13, 71, 161, 0.3);
+    }
+</style>
+
+<div class="dashboard-container">
+    <div class="page-title-section">
+        <h1>🏗️ Şube ve Depo Yönetimi</h1>
+        <a href="{{ url_for('subeler.ekle') }}" class="add-button">+ Yeni Şube Tanımla</a>
+    </div>
+
+    <div class="sube-grid">
+        {% for item in sube_verileri %}
+        <div class="sube-card">
+            <div class="card-header">
+                <span class="sube-name">{{ item.detay.isim }}</span>
+                <div class="status-badge" title="Aktif"></div>
+            </div>
+
+            <div class="stat-row">
+                <div class="stat-item" style="border-right: 1px solid #eee;">
+                    <span class="stat-value">{{ item.istatistik.toplam }}</span>
+                    <span class="stat-label">Ekipman</span>
+                </div>
+                <div class="stat-item" style="border-right: 1px solid #eee;">
+                    <span class="stat-value" style="color: var(--success-green);">{{ item.istatistik.kirada }}</span>
+                    <span class="stat-label">Sahada</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" style="color: var(--warning-orange);">{{ item.istatistik.bosta }}</span>
+                    <span class="stat-label">Depoda</span>
+                </div>
+            </div>
+
+            <div class="card-body">
+                {% if item.detay.yetkili_kisi %}
+                <div class="info-line">
+                    <span>👤</span> <strong>{{ item.detay.yetkili_kisi }}</strong>
+                </div>
+                {% endif %}
+                
+                {% if item.detay.telefon %}
+                <div class="info-line">
+                    <span>📞</span> {{ item.detay.telefon }}
+                </div>
+                {% endif %}
+
+                <div class="info-line">
+                    <span>📍</span> {{ item.detay.adres or 'Adres belirtilmemiş' }}
+                </div>
+            </div>
+
+            <div class="card-footer">
+                {% if item.detay.konum_linki %}
+                <a href="{{ item.detay.konum_linki }}" target="_blank" class="btn-pimaks btn-maps">Haritada Gör</a>
+                {% endif %}
+                <a href="{{ url_for('subeler.duzenle', id=item.detay.id) }}" class="btn-pimaks btn-manage">Düzenle</a>
+            </div>
+        </div>
+        {% else %}
+        <div style="grid-column: 1/-1; text-align: center; padding: 5rem; background: white; border-radius: 15px;">
+            <div style="font-size: 4rem;">🏢</div>
+            <h3 style="color: #94a3b8;">Henüz tanımlı bir şube bulunamadı.</h3>
+            <p style="color: #94a3b8;">Operasyona başlamak için ilk şubenizi veya deponuzu ekleyin.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,10 +1,11 @@
 from app.extensions import db
 from datetime import datetime
+from app.models.base_model import BaseModel
 
-class Kiralama(db.Model):
+class Kiralama(BaseModel):
     __tablename__ = 'kiralama'
     
-    id = db.Column(db.Integer, primary_key=True)
+    
     kiralama_form_no = db.Column(db.String(100), nullable=True)
     kdv_orani = db.Column(db.Integer, nullable=False, default=20)
     
@@ -17,17 +18,20 @@ class Kiralama(db.Model):
     # İlişkiler
     firma_musteri = db.relationship('Firma', back_populates='kiralamalar', foreign_keys=[firma_musteri_id])
     kalemler = db.relationship('KiralamaKalemi', back_populates='kiralama', cascade="all, delete-orphan")
-
+    nakliyeler = db.relationship('Nakliye', back_populates='kiralama', cascade="all, delete-orphan")
     def __repr__(self):
         return f'<Kiralama {self.kiralama_form_no}>'
 
-class KiralamaKalemi(db.Model):
+from app.extensions import db
+from datetime import datetime
+
+class KiralamaKalemi(BaseModel):
     __tablename__ = 'kiralama_kalemi'
     
-    id = db.Column(db.Integer, primary_key=True)
+    
     kiralama_id = db.Column(db.Integer, db.ForeignKey('kiralama.id'), nullable=False)
     
-    # PİMAKS FİLOSU (Kendi makinemiz ise burası dolu olur)
+    # --- PİMAKS FİLOSU ---
     ekipman_id = db.Column(db.Integer, db.ForeignKey('ekipman.id'), nullable=True)
     
     # --- DIŞ TEDARİK (HARİCİ) EKİPMAN BİLGİLERİ ---
@@ -57,19 +61,41 @@ class KiralamaKalemi(db.Model):
     nakliye_tedarikci_id = db.Column(db.Integer, db.ForeignKey('firma.id'), nullable=True)
     nakliye_araci_id = db.Column(db.Integer, db.ForeignKey('ekipman.id'), nullable=True)
     
+    # --- DURUM VE VERSİYONLAMA (YENİ EKLENENLER) ---
     sonlandirildi = db.Column(db.Boolean, default=False, nullable=False)
-
-    # --- İLİŞKİLER (Ambiguity/Belirsizlik Giderildi) ---
-    kiralama = db.relationship('Kiralama', back_populates='kalemler')
+    is_active = db.Column(db.Boolean, default=True, nullable=False) # Şu anki aktif versiyon mu?
     
-    # Kiralanan asıl makine ilişkisi
+    parent_id = db.Column(db.Integer, db.ForeignKey('kiralama_kalemi.id'), nullable=True)
+    versiyon_no = db.Column(db.Integer, default=1, nullable=False)
+    
+    # --- DEĞİŞİM VE SAYAÇ BİLGİLERİ (SAAT ŞARTI YOK) ---
+    degisim_nedeni = db.Column(db.String(50), nullable=True) # ariza, bakim, musteri_istegi
+    degisim_tarihi = db.Column(db.DateTime, nullable=True)
+    
+    cikis_saati = db.Column(db.Integer, nullable=True) # Teslimat anındaki saat
+    donus_saati = db.Column(db.Integer, nullable=True) # Sahadan çekildiği andaki saat
+    
+    degisim_aciklama = db.Column(db.Text, nullable=True)
+
+    
+
+    # --- İLİŞKİLER ---
+    kiralama = db.relationship('Kiralama', back_populates='kalemler')
     ekipman = db.relationship('Ekipman', back_populates='kiralama_kalemleri', foreign_keys=[ekipman_id])
     
-    # Nakliye aracı ilişkisi (Backref ekleyerek karışıklığı önledik)
+    # Nakliye aracı ve tedarikçiler
     nakliye_araci = db.relationship('Ekipman', foreign_keys=[nakliye_araci_id], backref='yapilan_nakliyeler')
-    
     harici_tedarikci = db.relationship('Firma', foreign_keys=[harici_ekipman_tedarikci_id])
     nakliye_tedarikci = db.relationship('Firma', foreign_keys=[nakliye_tedarikci_id])
 
+    # Versiyon Ağacı İlişkisi (Self-Referential)
+    # Bir kalemin alt revizyonlarını listelemek için
+    revizyonlar = db.relationship('KiralamaKalemi', backref=db.backref('ust_kayit', remote_side='KiralamaKalemi.id'))
+
+      
+    # Aynı kalem ailesindeki tüm kayıtlar için ortak ID
+    chain_id = db.Column(db.Integer, index=True)
+
     def __repr__(self):
-        return f'<KiralamaKalemi {self.id}>'
+        status = "AKTİF" if self.is_active else "PASİF/REVİZE"
+        return f'<KiralamaKalemi ID:{self.id} Ver:{self.versiyon_no} {status}>'

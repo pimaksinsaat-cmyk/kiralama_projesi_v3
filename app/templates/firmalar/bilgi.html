@@ -42,6 +42,10 @@
         
         <div class="mt-2 mt-md-0">
             <div class="btn-group me-2" role="group">
+                <!-- HAKEDİŞ BUTONU -->
+                <a href="{{ url_for('fatura.olustur') }}" class="btn btn-primary">
+                    <i class="fa fa-magic"></i> Hakediş Oluştur
+                </a>
                 <a href="{{ url_for('cari.odeme_ekle', firma_id=firma.id, yon='tahsilat') }}" class="btn btn-success">
                     <i class="fa fa-arrow-down"></i> Tahsilat Al
                 </a>
@@ -54,8 +58,8 @@
             </div>
             <a href="{{ url_for('firmalar.duzelt', id=firma.id) }}" class="btn btn-warning"><i class="fa fa-edit"></i></a>
             <a href="{{ request.referrer or url_for('firmalar.index') }}" class="btn btn-secondary">
-    <i class="fa fa-arrow-left"></i>
-</a>
+                <i class="fa fa-arrow-left"></i>
+            </a>
         </div>
     </div>
 
@@ -116,7 +120,6 @@
                         </thead>
                         <tbody>
                             {% for islem in hareketler %}
-                            {# Mantıksal Ayırma #}
                             {% set is_kiralama = (islem.tur == 'Kiralama' and islem.ozel_id) %}
                             {% set is_nakliye = (islem.tur == 'Nakliye' and islem.ozel_id) %}
 
@@ -191,60 +194,58 @@
                                         <strong>{{ kiralama.kiralama_form_no or 'No Belirtilmemiş' }}</strong>
                                     </a>
                                 </td>
-
                                 <td>
-    <ul class="list-unstyled mb-0 small">
-        {% for kalem in kiralama.kalemler %}
-        <li class="mb-3 d-flex align-items-start">
-            {% if kalem.sonlandirildi %}
-                <span class="badge bg-secondary me-2" style="min-width: 65px; opacity: 0.7;">Bitti</span>
-                <div class="text-muted" style="opacity: 0.8;">
-                    <span class="fw-bold">{{ kalem.ekipman.kod }} - {{ kalem.ekipman.tipi }}</span><br>
-                    <small>
-                        <i class="fa fa-calendar-check-o"></i> 
-                        {{ kalem.kiralama_baslangici.strftime('%d.%m.%Y') }} - {{ kalem.kiralama_bitis.strftime('%d.%m.%Y') }} tarihleri arası çalıştı.
-                    </small>
-                </div>
-            {% else %}
-                <span class="badge bg-success me-2" style="min-width: 65px;">Aktif</span>
-                <div>
-                    <span class="fw-bold text-dark">{{ kalem.ekipman.kod }} - {{ kalem.ekipman.tipi }}</span>
-                    <i class="fas fa-tractor ms-1 text-primary" title="Makine Sahada"></i><br>
-                    <small class="text-primary fw-bold">
-                        <i class="fa fa-clock-o"></i> 
-                        {{ kalem.kiralama_baslangici.strftime('%d.%m.%Y') }} tarihinden beri çalışıyor.
-                    </small>
-                </div>
-            {% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-</td>
-
+                                    <ul class="list-unstyled mb-0 small">
+                                        {% for kalem in kiralama.kalemler %}
+                                        <li class="mb-3 d-flex align-items-start">
+                                            {% if kalem.sonlandirildi %}
+                                                <span class="badge bg-secondary me-2" style="min-width: 65px; opacity: 0.7;">Bitti</span>
+                                                <div class="text-muted" style="opacity: 0.8;">
+                                                    <span class="fw-bold">{{ kalem.ekipman.kod }} - {{ kalem.ekipman.tipi }}</span><br>
+                                                    <small>
+                                                        <i class="fa fa-calendar-check-o text-muted"></i> 
+                                                        {{ kalem.kiralama_baslangici.strftime('%d.%m.%Y') }} - {{ kalem.kiralama_bitis.strftime('%d.%m.%Y') }} tarihleri arası çalıştı.
+                                                    </small>
+                                                </div>
+                                            {% else %}
+                                                <span class="badge bg-success me-2" style="min-width: 65px;">Aktif</span>
+                                                <div>
+                                                    <span class="fw-bold text-dark">{{ kalem.ekipman.kod }} - {{ kalem.ekipman.tipi }}</span>
+                                                    <i class="fas fa-tractor ms-1 text-primary" title="Makine Sahada"></i><br>
+                                                    <small class="text-primary fw-bold">
+                                                        <i class="fa fa-clock-o"></i> 
+                                                        {{ kalem.kiralama_baslangici.strftime('%d.%m.%Y') }} tarihinden beri çalışıyor.
+                                                    </small>
+                                                </div>
+                                            {% endif %}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </td>
                                 <td>
                                     {% set toplam = kiralama.kalemler | length %}
                                     {% set biten = kiralama.kalemler | selectattr('sonlandirildi', 'equalto', true) | list | length %}
-                            
+                                   
                                     {% if biten == 0 %}
                                         <span class="text-success fw-bold"><i class="fa fa-play-circle"></i> Tamamı Sahada</span>
                                     {% elif biten == toplam %}
                                         <span class="text-secondary"><i class="fa fa-check-double"></i> Sözleşme Kapandı</span>
                                     {% else %}
                                         <span class="text-warning fw-bold">
-                                        <i class="fa fa-exclamation-circle"></i> Parçalı Teslimat
-                                        <br><small class="text-muted">({{ biten }}/{{ toplam }} makine döndü)</small>
+                                            <i class="fa fa-exclamation-circle"></i> Parçalı Teslimat
+                                            <br><small class="text-muted">({{ biten }}/{{ toplam }} makine döndü)</small>
                                         </span>
                                     {% endif %}
                                 </td>
-
-                        <td class="text-end">
-                            <a href="{{ url_for('kiralama.duzenle', kiralama_id=kiralama.id) }}" class="btn btn-sm btn-outline-primary">
-                                <i class="fa fa-search"></i>
-                            </a>
-                        </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
+                                
+                                <td class="text-end">
+                                    <a href="{{ url_for('kiralama.duzenle', kiralama_id=kiralama.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fa fa-search"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
                     </table>
                 </div>
             </div>
@@ -257,7 +258,7 @@
                         <table class="table table-borderless">
                             <tr><th>Yetkili Kişi:</th><td>{{ firma.yetkili_adi or '-' }}</td></tr>
                             <tr><th>Telefon:</th><td>{{ firma.telefon or '-' }}</td></tr>
-                            <tr><th>Email:</th><td>{{ firma.email or '-' }}</td></tr>
+                            <tr><th>Email:</th><td>{{ firma.eposta or '-' }}</td></tr>
                             <tr><th>Vergi No:</th><td>{{ firma.vergi_no or '-' }}</td></tr>
                             <tr><th>İletişim:</th><td>{{ firma.iletisim_bilgileri or '-' }}</td></tr>
                         </table>
@@ -279,46 +280,31 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 </form>
 
-<div class="alert 
-    {% if firma.imza_yetkisi_kontrol_edildi %}
-        alert-success
-    {% else %}
-        alert-warning
-    {% endif %}
-    d-flex justify-content-between align-items-center"
->
+<!-- İMZA YETKİSİ ALERTI -->
+<div class="alert {% if firma.imza_yetkisi_kontrol_edildi %}alert-success{% else %}alert-warning{% endif %} d-flex justify-content-between align-items-center mt-4 shadow-sm">
     <div>
         <strong>İmza Yetkisi Durumu:</strong>
         {% if firma.imza_yetkisi_kontrol_edildi %}
             Kontrol Edildi
             {% if firma.imza_yetkisi_kontrol_tarihi %}
-                <small class="text-muted">
-                    ({{ firma.imza_yetkisi_kontrol_tarihi.strftime('%d.%m.%Y') }})
-                </small>
+                <small class="text-muted">({{ firma.imza_yetkisi_kontrol_tarihi.strftime('%d.%m.%Y') }})</small>
             {% endif %}
         {% else %}
             Kontrol Edilmedi
         {% endif %}
     </div>
-
     {% if not firma.imza_yetkisi_kontrol_edildi %}
     <form method="POST" action="{{ url_for('firmalar.imza_kontrol', id=firma.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-sm btn-outline-success">
-            İmza Yetkisini Onayla
-        </button>
+        <button type="submit" class="btn btn-sm btn-outline-success">İmza Yetkisini Onayla</button>
     </form>
     {% endif %}
 </div>
-
-
-
 
 <script>
     const contextMenu = document.getElementById('custom-context-menu');
     let selectedId, selectedType, selectedOzelId, selectedDesc;
 
-    // Sağ tık menüsünü göster
     document.addEventListener('contextmenu', function(e) {
         const row = e.target.closest('.context-row');
         if (row) {
@@ -328,7 +314,6 @@
             selectedOzelId = row.getAttribute('data-ozel-id');
             selectedDesc = row.getAttribute('data-desc');
 
-            // Menü içeriği (Ödeme ise silme aktif, değilse düzenleme aktif mantığı)
             if (selectedType === 'odeme') {
                 document.getElementById('menu-edit').style.display = 'none';
                 document.getElementById('menu-delete').style.display = 'block';
@@ -343,32 +328,25 @@
         }
     });
 
-    // Menüyü kapat
     document.addEventListener('click', () => contextMenu.style.display = 'none');
 
-    // Düzenle İşlemi
     document.getElementById('menu-edit').addEventListener('click', function() {
         const cleanOzelId = selectedOzelId ? selectedOzelId.trim() : "";
-
         if (selectedType === 'kiralama') {
             if (cleanOzelId && cleanOzelId !== 'None' && cleanOzelId !== '') {
                 window.location.href = "/kiralama/duzenle/" + cleanOzelId;
             } else {
-                alert("Hata: Kiralama ID bulunamadı! İşlem No: " + selectedId);
+                alert("Hata: Kiralama ID bulunamadı!");
             }
-        } 
-        else if (selectedType === 'nakliye') {
+        } else if (selectedType === 'nakliye') {
             window.location.href = "/nakliyeler/duzenle/" + cleanOzelId;
-        } 
-        else {
-            // Standart hizmet/fatura düzenleme
+        } else {
             window.location.href = "/cari/hizmet/duzelt/" + selectedId;
         }
     });
 
-    // Sil İşlemi (Ödemeler için)
     document.getElementById('menu-delete').addEventListener('click', function() {
-        if (selectedId && confirm('Bu ödeme kaydını silmek istediğinize emin misiniz?')) {
+        if (selectedId && confirm('Silmek istediğinize emin misiniz?')) {
             const form = document.getElementById('delete-form');
             form.action = "/cari/odeme/sil/" + selectedId;
             form.submit();
