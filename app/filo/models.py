@@ -27,7 +27,11 @@ class Ekipman(BaseModel):
     uretim_yili = db.Column(db.Integer, nullable=False)
     calisma_durumu = db.Column(db.String(50), nullable=False, default='bosta') 
     giris_maliyeti = db.Column(db.Numeric(15, 2), nullable=True, default=0.0)
-    para_birimi = db.Column(db.String(3), nullable=False, default='TRY') 
+    para_birimi = db.Column(db.String(3), nullable=False, default='TRY')
+    
+    # --- SATINALMA DÖVİZ KURLARI (Finansal Analiz için) ---
+    temin_doviz_kuru_usd = db.Column(db.Numeric(10, 4), nullable=True, default=0.0)
+    temin_doviz_kuru_eur = db.Column(db.Numeric(10, 4), nullable=True, default=0.0) 
     
     sube_id = db.Column(db.Integer, db.ForeignKey('subeler.id'), nullable=True)
     sube = db.relationship('Sube', back_populates='ekipmanlar')

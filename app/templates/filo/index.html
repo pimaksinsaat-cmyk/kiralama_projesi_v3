@@ -173,6 +173,9 @@
     </div>
 
     <div class="border-bottom my-1"></div>
+    <a href="#" class="context-menu-item" id="menu-rapor">
+        <i class="fas fa-chart-line"></i> Finansal Analiz
+    </a>
     <a href="#" class="context-menu-item" id="menu-bilgi">
         <i class="fas fa-info-circle"></i> Teknik Detaylar
     </a>
@@ -399,6 +402,12 @@
             document.getElementById('sube-degistir-form').action = "/filo/sube_degistir/" + currentData.ekipmanId;
             hideContextMenu();
             subeModal.show();
+        });
+
+        document.getElementById('menu-rapor').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.href = "/filo/finansal_rapor/" + currentData.ekipmanId;
+            hideContextMenu();
         });
 
         document.querySelectorAll('.sonlandir-buton').forEach(btn => {

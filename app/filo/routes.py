@@ -1,12 +1,13 @@
 from app.filo import filo_bp
-from flask import render_template, redirect, url_for, flash, request, current_app
+from flask import render_template, redirect, url_for, flash, request, current_app, jsonify
 from sqlalchemy.orm import joinedload, subqueryload
 from sqlalchemy import or_, and_
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from flask_login import current_user
 
 # Servisler ve Doğrulama
 from app.services.filo_services import EkipmanService, BakimService
+from app.services.ekipman_rapor_services import EkipmanRaporuService
 from app.services.base import ValidationError
 
 # Modeller
@@ -332,3 +333,82 @@ def geri_yukle(id):
 def harici():
     ekipmanlar = Ekipman.query.filter(Ekipman.firma_tedarikci_id.isnot(None), Ekipman.is_active == True).all()
     return render_template('filo/harici.html', ekipmanlar=ekipmanlar)
+
+
+# -------------------------------------------------------------------------
+# 9. Finansal Raporlama - Makine ROI ve Amorti Analizi
+# -------------------------------------------------------------------------
+@filo_bp.route('/finansal_rapor/<int:ekipman_id>', methods=['GET', 'POST'])
+def finansal_rapor(ekipman_id):
+    """
+    Makinenin finansal analizini gösterir:
+    - Başlangıç maliyeti
+    - Kiralama gelirleri (dönem bazında)
+    - Servis masrafları
+    - ROI ve amorti durumu
+    """
+    ekipman = Ekipman.query.get_or_404(ekipman_id)
+    
+    # Form'dan tarih aralığı al veya varsayılan değerler kullan
+    start_date = None
+    end_date = date.today()
+    
+    if request.method == 'POST':
+        start_str = request.form.get('start_date')
+        end_str = request.form.get('end_date')
+        
+        if start_str:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+        if end_str:
+            end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+    else:
+        # Ilk ziyarette: Makinenin satın alındığı tarihten itibaren
+        if ekipman.created_at:
+            start_date = ekipman.created_at.date()
+    
+    # Finansal analiz hesapla
+    ozet = EkipmanRaporuService.get_finansal_ozet(ekipman_id, start_date, end_date)
+    
+    # Kiralama detayları (tablo için)
+    kiralama_detaylari = EkipmanRaporuService.get_kiralama_detaylari(ekipman_id, start_date, end_date)
+    
+    # Durum etiketi (Türkçe)
+    durum_etiketleri = {
+        'amorti_olmadi_zarar': 'Henüz Amorti Olmadı (Zarar)',
+        'amorti_surecinde': 'Amorti Süreci İçinde',
+        'amorti_oldu': 'Kendini Amorti Etti',
+        'kar_asamasi': 'Kâr Aşamasında'
+    }
+    
+    ozet['durum_etiket'] = durum_etiketleri.get(ozet['durum'], ozet['durum'])
+    
+    return render_template(
+        'filo/finansal_rapor.html',
+        ekipman=ekipman,
+        ozet=ozet,
+        kiralama_detaylari=kiralama_detaylari,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+
+@filo_bp.route('/finansal_rapor_api/<int:ekipman_id>')
+def finansal_rapor_api(ekipman_id):
+    """
+    Finansal rapor verilerini JSON formatında döner (grafik oluşturma için)
+    """
+    ekipman = Ekipman.query.get(ekipman_id)
+    if not ekipman:
+        return jsonify({'error': 'Makine bulunamadı'}), 404
+    
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    if start_date:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    if end_date:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    ozet = EkipmanRaporuService.get_finansal_ozet(ekipman_id, start_date, end_date)
+    
+    return jsonify(ozet)

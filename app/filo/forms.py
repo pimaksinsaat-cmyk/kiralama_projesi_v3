@@ -48,6 +48,10 @@ class EkipmanForm(BaseForm):
     para_birimi = SelectField('Para Birimi', choices=[
         ('TRY', 'TRY'), ('USD', 'USD'), ('EUR', 'EUR'), ('GBP', 'GBP')
     ], default='TRY')
+    
+    # --- Satın Alma Sırasındaki Döviz Kurları (Finansal Analiz) ---
+    temin_doviz_kuru_usd = MoneyField('Satın Alma Tarihindeki USD Kuru', validators=[Optional()])
+    temin_doviz_kuru_eur = MoneyField('Satın Alma Tarihindeki EUR Kuru', validators=[Optional()])
 
     # Şubeler rotada (routes.py) dinamik olarak veritabanından doldurulacak
     sube_id = SelectField('Bulunduğu Şube', coerce=int, validators=[
