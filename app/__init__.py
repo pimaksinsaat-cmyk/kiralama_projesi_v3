@@ -105,6 +105,17 @@ def create_app(config_class=Config):
         from flask_migrate import upgrade
         upgrade()
 
+        from app.auth.models import User
+
+        if not User.query.filter_by(username='admin').first():
+            yeni_admin = User(
+                username='admin',
+                rol='admin',
+                is_active=True
+            )
+            yeni_admin.set_password('123456')
+            db.session.add(yeni_admin)
+            db.session.commit()
     return app
     
 
