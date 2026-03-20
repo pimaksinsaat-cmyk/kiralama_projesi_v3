@@ -343,11 +343,26 @@
 
             const menuRect = contextMenu.getBoundingClientRect();
             const margin = 8;
+            
+            // Client ve scroll koordinatlarını birleştir (scroll-aware)
             let left = (e.pageX || (e.touches && e.touches[0] && e.touches[0].pageX) || 0);
             let top = (e.pageY || (e.touches && e.touches[0] && e.touches[0].pageY) || 0);
 
-            if (left + menuRect.width + margin > window.innerWidth) left = window.innerWidth - menuRect.width - margin;
-            if (top + menuRect.height + margin > window.innerHeight) top = window.innerHeight - menuRect.height - margin;
+            // Sağ alanda taşma varsa sola kaydır
+            if (left + menuRect.width + margin > window.innerWidth) {
+                left = window.innerWidth - menuRect.width - margin;
+            }
+            
+            // Menüyü yukarı koyup sayfanın üstüne taşıyorsa, aşağıya koy
+            const minSpaceAbove = top - margin;
+            if (minSpaceAbove < menuRect.height && top + menuRect.height + margin < window.innerHeight) {
+                // Yukarıda yer yok ama aşağıda var, aşağıya koy
+                top = top + 25; // İmlecin altında
+            } else if (top - menuRect.height - margin < 0) {
+                // Yukarıda da aşağıda da yer yoksa, viewport'a sığacak şekilde ayarla
+                top = margin;
+            }
+            
             if (left < margin) left = margin;
             if (top < margin) top = margin;
 
