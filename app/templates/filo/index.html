@@ -315,6 +315,7 @@
        
         const showMenu = (e, row) => {
             e.preventDefault();
+            e.stopPropagation(); // Event dalgalanmasını kes, çıkma sorununu azalt
             currentData = row.dataset;
             
             // Sadece 'boşta' olanlar kiralanabilir, bakıma alınabilir VEYA ŞUBE DEĞİŞTİREBİLİR
@@ -331,8 +332,29 @@
             document.getElementById('menu-kirala').href = currentData.kiralaUrl;
 
             // Menüyü konumlandır
-            contextMenu.style.left = e.pageX + 'px';
-            contextMenu.style.top = e.pageY + 'px';
+            contextMenu.style.display = 'block';
+            // Önce sabit, sonra boyutuna göre düzeltme yapalım
+            contextMenu.style.left = '0px';
+            contextMenu.style.top = '0px';
+
+            const menuRect = contextMenu.getBoundingClientRect();
+            const margin = 8;
+            let left = e.pageX;
+            let top = e.pageY;
+
+            // Sağ alanda taşma varsa sola kaydır
+            if (left + menuRect.width + margin > window.innerWidth) {
+                left = window.innerWidth - menuRect.width - margin;
+            }
+            // Alt alanda taşma varsa yukarı kaydır
+            if (top + menuRect.height + margin > window.innerHeight) {
+                top = window.innerHeight - menuRect.height - margin;
+            }
+            if (left < margin) left = margin;
+            if (top < margin) top = margin;
+
+            contextMenu.style.left = `${left}px`;
+            contextMenu.style.top = `${top}px`;
             contextMenu.style.display = 'block';
         };
 
@@ -382,7 +404,11 @@
         });
 
         // Herhangi bir yere tıklandığında menüyü kapat
-        window.addEventListener('click', () => contextMenu.style.display = 'none');
+        window.addEventListener('click', (event) => {
+            if (!contextMenu.contains(event.target)) {
+                contextMenu.style.display = 'none';
+            }
+        });
     });
 </script>
 {% endblock %}
