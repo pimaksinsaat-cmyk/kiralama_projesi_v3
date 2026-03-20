@@ -327,8 +327,10 @@
             e.stopPropagation();
 
             currentData = row.dataset;
-            const isBosta = currentData.durum === 'bosta';
 
+            const durum = (currentData.durum || '').toLowerCase().trim();
+            const isBosta = durum === 'bosta' || durum === 'boşta';
+           
             document.getElementById('menu-kirala').style.display = isBosta ? 'flex' : 'none';
             document.getElementById('menu-bakim').style.display = isBosta ? 'flex' : 'none';
             document.getElementById('menu-sube-degistir').style.display = isBosta ? 'flex' : 'none';
@@ -351,8 +353,8 @@
             const clientY = e.clientY ?? (e.touches?.[0]?.clientY ?? 0);
 
             // position: fixed kullandığımız için doğrudan clientX/Y yeterli
-            let left = clientX;
-            let top = clientY;
+            let left = clientX+ window.scrollX;
+            let top = clientY + window.scrollY;
 
             // Sağa taşıyorsa sola kaydır
             if (left + menuWidth + margin > window.innerWidth) {
