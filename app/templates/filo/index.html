@@ -31,7 +31,7 @@
 
     /* Sağ Tık Menüsü */
     .context-menu { 
-        display: none; position: absolute; background: #fff; min-width: 220px; 
+        display: none; position: fixed; background: #fff; min-width: 220px; 
         border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); 
         border: 1px solid #e2e8f0; z-index: 9999; padding: 8px 0;
     }
@@ -308,8 +308,8 @@
                     const mockEvent = {
                         preventDefault: () => e.preventDefault(),
                         stopPropagation: () => e.stopPropagation(),
-                        pageX: touch.pageX,
-                        pageY: touch.pageY
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
                     };
                     callback(mockEvent, element);
                 }, 700);
@@ -337,38 +337,39 @@
             document.getElementById('menu-duzenle').href = currentData.duzenleUrl || '#';
             document.getElementById('menu-kirala').href = currentData.kiralaUrl || '#';
 
+            // Önce ekrana al, boyutları ölç, sonra doğru konuma taşı
+            contextMenu.style.left = '-9999px';
+            contextMenu.style.top = '-9999px';
             contextMenu.style.display = 'block';
-            contextMenu.style.left = '0px';
-            contextMenu.style.top = '0px';
 
-            const menuRect = contextMenu.getBoundingClientRect();
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
             const margin = 8;
-            
-            // Client ve scroll koordinatlarını birleştir (scroll-aware)
-            let left = (e.pageX || (e.touches && e.touches[0] && e.touches[0].pageX) || 0);
-            let top = (e.pageY || (e.touches && e.touches[0] && e.touches[0].pageY) || 0);
 
-            // Sağ alanda taşma varsa sola kaydır
-            if (left + menuRect.width + margin > window.innerWidth) {
-                left = window.innerWidth - menuRect.width - margin;
+            // clientX/Y: viewport koordinatları (scroll'dan bağımsız)
+            const clientX = e.clientX ?? (e.touches?.[0]?.clientX ?? 0);
+            const clientY = e.clientY ?? (e.touches?.[0]?.clientY ?? 0);
+
+            // position: fixed kullandığımız için doğrudan clientX/Y yeterli
+            let left = clientX;
+            let top = clientY;
+
+            // Sağa taşıyorsa sola kaydır
+            if (left + menuWidth + margin > window.innerWidth) {
+                left = left - menuWidth;
             }
-            
-            // Menüyü yukarı koyup sayfanın üstüne taşıyorsa, aşağıya koy
-            const minSpaceAbove = top - margin;
-            if (minSpaceAbove < menuRect.height && top + menuRect.height + margin < window.innerHeight) {
-                // Yukarıda yer yok ama aşağıda var, aşağıya koy
-                top = top + 25; // İmlecin altında
-            } else if (top - menuRect.height - margin < 0) {
-                // Yukarıda da aşağıda da yer yoksa, viewport'a sığacak şekilde ayarla
-                top = margin;
+
+            // Aşağıya taşıyorsa yukarı kaydır
+            if (top + menuHeight + margin > window.innerHeight) {
+                top = top - menuHeight;
             }
-            
+
+            // Negatife düşmesin
             if (left < margin) left = margin;
             if (top < margin) top = margin;
 
             contextMenu.style.left = left + 'px';
             contextMenu.style.top = top + 'px';
-            contextMenu.style.display = 'block';
         }
 
         document.querySelectorAll('.ekipman-satiri').forEach(row => {
@@ -377,7 +378,7 @@
         });
 
         document.body.addEventListener('contextmenu', (e) => {
-            if (!e.target.closest('.ekipman-satiri')) return; // sadece tablo satırlarında özel menü
+            if (!e.target.closest('.ekipman-satiri')) return;
             e.preventDefault();
         });
 
