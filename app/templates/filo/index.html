@@ -81,6 +81,9 @@
                 <input type="text" name="q" class="form-control search-input border-start-0" 
                        placeholder="Makine kodu, marka veya seri no ile ara..." value="{{ q or '' }}">
                 <button type="submit" class="btn btn-dark search-btn font-weight-bold">Sorgula</button>
+                <button type="button" class="btn btn-outline-primary ms-2 rounded-3" data-bs-toggle="modal" data-bs-target="#filterModal">
+                    <i class="fas fa-filter me-2"></i>Detaylı Filtre
+                </button>
             </div>
         </form>
 
@@ -280,109 +283,106 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
+<!-- Filtre Modalı Dahil Ediliyor -->
+{% set g_ekipman_id = "g-ekipman-hidden" %}
+{% include "kiralama/_filtre_modal.html" %}
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const maintenanceModal = new bootstrap.Modal(document.getElementById('bs-bakim-modal'));
         const endRentalModal = new bootstrap.Modal(document.getElementById('bs-sonlandir-modal'));
-        
-        // CERRAH DOKUNUŞU 5: Nakil Modalını Tanımla
         const subeModal = new bootstrap.Modal(document.getElementById('bs-sube-modal'));
-        
         const contextMenu = document.getElementById('context-menu');
         let currentData = {};
 
-        // Mobil için uzun basma desteği
+        function hideContextMenu() {
+            contextMenu.style.display = 'none';
+        }
+
         function addLongPressListener(element, callback) {
             let timer;
-            element.addEventListener('touchstart', (e) => {
-                timer = setTimeout(() => {
+            element.addEventListener('touchstart', function(e) {
+                timer = setTimeout(function() {
                     timer = null;
                     const touch = e.touches[0];
                     const mockEvent = {
                         preventDefault: () => e.preventDefault(),
+                        stopPropagation: () => e.stopPropagation(),
                         pageX: touch.pageX,
                         pageY: touch.pageY
                     };
                     callback(mockEvent, element);
                 }, 700);
             }, { passive: false });
-            const clear = () => { if (timer) clearTimeout(timer); };
+
+            function clear() { if (timer) { clearTimeout(timer); timer = null; } }
             element.addEventListener('touchend', clear);
             element.addEventListener('touchmove', clear);
+            element.addEventListener('touchcancel', clear);
         }
 
-        // Sağ tık / Uzun basma menü gösterimi
-       
-        const showMenu = (e, row) => {
+        function showMenu(e, row) {
+            if (!row || !row.dataset) return;
             e.preventDefault();
-            e.stopPropagation(); // Event dalgalanmasını kes, çıkma sorununu azalt
+            e.stopPropagation();
+
             currentData = row.dataset;
-            
-            // Sadece 'boşta' olanlar kiralanabilir, bakıma alınabilir VEYA ŞUBE DEĞİŞTİREBİLİR
             const isBosta = currentData.durum === 'bosta';
+
             document.getElementById('menu-kirala').style.display = isBosta ? 'flex' : 'none';
             document.getElementById('menu-bakim').style.display = isBosta ? 'flex' : 'none';
-            
-            // YENİ GÜVENLİK: Şube değiştirme butonu sadece makine depodaysa (boştaysa) görünsün!
             document.getElementById('menu-sube-degistir').style.display = isBosta ? 'flex' : 'none';
-            
-            // Linkleri güncelle
-            document.getElementById('menu-bilgi').href = currentData.bilgiUrl;
-            document.getElementById('menu-duzenle').href = currentData.duzenleUrl;
-            document.getElementById('menu-kirala').href = currentData.kiralaUrl;
 
-            // Menüyü konumlandır
+            document.getElementById('menu-bilgi').href = currentData.bilgiUrl || '#';
+            document.getElementById('menu-duzenle').href = currentData.duzenleUrl || '#';
+            document.getElementById('menu-kirala').href = currentData.kiralaUrl || '#';
+
             contextMenu.style.display = 'block';
-            // Önce sabit, sonra boyutuna göre düzeltme yapalım
             contextMenu.style.left = '0px';
             contextMenu.style.top = '0px';
 
             const menuRect = contextMenu.getBoundingClientRect();
             const margin = 8;
-            let left = e.pageX;
-            let top = e.pageY;
+            let left = (e.pageX || (e.touches && e.touches[0] && e.touches[0].pageX) || 0);
+            let top = (e.pageY || (e.touches && e.touches[0] && e.touches[0].pageY) || 0);
 
-            // Sağ alanda taşma varsa sola kaydır
-            if (left + menuRect.width + margin > window.innerWidth) {
-                left = window.innerWidth - menuRect.width - margin;
-            }
-            // Alt alanda taşma varsa yukarı kaydır
-            if (top + menuRect.height + margin > window.innerHeight) {
-                top = window.innerHeight - menuRect.height - margin;
-            }
+            if (left + menuRect.width + margin > window.innerWidth) left = window.innerWidth - menuRect.width - margin;
+            if (top + menuRect.height + margin > window.innerHeight) top = window.innerHeight - menuRect.height - margin;
             if (left < margin) left = margin;
             if (top < margin) top = margin;
 
-            contextMenu.style.left = `${left}px`;
-            contextMenu.style.top = `${top}px`;
+            contextMenu.style.left = left + 'px';
+            contextMenu.style.top = top + 'px';
             contextMenu.style.display = 'block';
-        };
+        }
 
-        // Satır dinleyicileri
         document.querySelectorAll('.ekipman-satiri').forEach(row => {
-            row.addEventListener('contextmenu', e => showMenu(e, row));
+            row.addEventListener('contextmenu', (e) => showMenu(e, row));
             addLongPressListener(row, showMenu);
         });
 
-        // Bakım modalini aç
+        document.body.addEventListener('contextmenu', (e) => {
+            if (!e.target.closest('.ekipman-satiri')) return; // sadece tablo satırlarında özel menü
+            e.preventDefault();
+        });
+
+        contextMenu.addEventListener('click', (e) => e.stopPropagation());
+
         document.getElementById('menu-bakim').addEventListener('click', function() {
             document.getElementById('bakim-id').value = currentData.ekipmanId;
             document.getElementById('bakim-kod-label').textContent = currentData.ekipmanKod;
             document.getElementById('bakim-tarihi-input').value = new Date().toISOString().split('T')[0];
-            contextMenu.style.display = 'none';
+            hideContextMenu();
             maintenanceModal.show();
         });
 
-        // CERRAH DOKUNUŞU 6: Şube Nakil Modalını Aç
         document.getElementById('menu-sube-degistir').addEventListener('click', function() {
             document.getElementById('sube-kod-label').textContent = currentData.ekipmanKod;
-            // Aksiyon URL'sini dinamik olarak oluştur (routes.py'deki rotaya gider)
             document.getElementById('sube-degistir-form').action = "/filo/sube_degistir/" + currentData.ekipmanId;
-            contextMenu.style.display = 'none';
+            hideContextMenu();
             subeModal.show();
         });
 
-        // Kiralamayı sonlandır butonu (tablo içi)
         document.querySelectorAll('.sonlandir-buton').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -393,7 +393,6 @@
             });
         });
 
-        // Silme işlemi
         document.getElementById('menu-sil').addEventListener('click', function() {
             if (confirm(currentData.ekipmanKod + ' makinesini silmek istediğinize emin misiniz?')) {
                 const form = document.getElementById('delete-form');
@@ -403,12 +402,26 @@
             }
         });
 
-        // Herhangi bir yere tıklandığında menüyü kapat
         window.addEventListener('click', (event) => {
-            if (!contextMenu.contains(event.target)) {
-                contextMenu.style.display = 'none';
-            }
+            if (!event.target.closest('.context-menu')) hideContextMenu();
         });
+
+        window.addEventListener('touchstart', (event) => {
+            if (!event.target.closest('.context-menu')) hideContextMenu();
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') hideContextMenu();
+        });
+
+        const filterApplyBtn = document.getElementById('f-apply');
+        if (filterApplyBtn) {
+            const originalOnClick = filterApplyBtn.onclick;
+            filterApplyBtn.onclick = async (e) => {
+                await originalOnClick(e);
+                const params = new URLSearchParams();
+            };
+        }
     });
 </script>
 {% endblock %}
