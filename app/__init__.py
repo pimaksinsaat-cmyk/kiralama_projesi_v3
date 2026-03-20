@@ -1,4 +1,6 @@
 # app/__init__.py
+import os
+
 from flask import Flask, request, redirect, url_for  # ← 'app' kaldırıldı
 from config import Config
 from flask_wtf.csrf import CSRFProtect 
@@ -12,6 +14,14 @@ csrf = CSRFProtect()
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    db_url = os.getenv("DATABASE_URL")
+
+    if db_url:
+        db_url = db_url.replace("postgres://", "postgresql://")
+        app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+
+
 
     # extensions'dan gelen nesneleri başlatıyoruz
     db.init_app(app)
@@ -91,7 +101,11 @@ def create_app(config_class=Config):
     from app.fatura import fatura_bp
     app.register_blueprint(fatura_bp, url_prefix='/fatura')
     
-
-    
+    with app.app_context():
+        from flask_migrate import upgrade
+        upgrade()
 
     return app
+    
+
+    
