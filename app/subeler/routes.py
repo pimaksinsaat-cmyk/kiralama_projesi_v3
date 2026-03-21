@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for, flash, request
+from flask import render_template, redirect, url_for, flash, request, jsonify
 from app.subeler import subeler_bp
 from app.extensions import db
 from app.subeler.models import Sube
@@ -70,3 +70,36 @@ def duzenle(id):
         return redirect(url_for('subeler.index'))
     
     return render_template('subeler/ekle.html', form=form, title="Şubeyi Düzenle")
+
+# 4. ŞUBE MAKİNELERİ (DURUM GÖRE KATEGORİZE)
+@subeler_bp.route('/<int:sube_id>/makineler')
+def sube_makineleri(sube_id):
+    try:
+        sube = Sube.query.get_or_404(sube_id)
+        
+        # Makineleri durumuna göre kategorize et
+        bosta = Ekipman.query.filter_by(sube_id=sube_id, calisma_durumu='bosta', is_active=True).all()
+        kirada = Ekipman.query.filter(
+            Ekipman.sube_id == sube_id,
+            Ekipman.calisma_durumu != 'bosta',
+            Ekipman.is_active == True
+        ).all()
+        
+        # 'plaka' yerine 'kod' kullan ve ekstra alanlar ekle
+        bosta_list = [{'id': e.id, 'kod': e.kod, 'marka': e.marka, 'yukseklik': e.calisma_yuksekligi, 'kapasite': e.kaldirma_kapasitesi} for e in bosta]
+        kirada_list = [{'id': e.id, 'kod': e.kod, 'marka': e.marka, 'yukseklik': e.calisma_yuksekligi, 'kapasite': e.kaldirma_kapasitesi} for e in kirada]
+        
+        return jsonify({
+            'sube_id': sube.id,
+            'sube_adi': sube.isim,
+            'bosta': bosta_list,
+            'kirada': kirada_list,
+            'bosta_sayisi': len(bosta),
+            'kirada_sayisi': len(kirada)
+        })
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"ERROR in sube_makineleri: {str(e)}")
+        print(error_trace)
+        return jsonify({'error': f'Veri yükleme hatası: {str(e)}'}), 500

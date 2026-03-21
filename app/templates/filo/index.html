@@ -109,6 +109,8 @@
                         data-sil-url="{{ url_for('filo.sil', id=ekipman.id) }}"
                         data-bilgi-url="{{ url_for('filo.bilgi', id=ekipman.id) }}"
                         data-kirala-url="{{ url_for('kiralama.ekle', ekipman_id=ekipman.id) }}"
+                        data-kiralama-gecmisi-url="{{ url_for('filo.kiralama_gecmisi', ekipman_id=ekipman.id) }}"
+                        data-finansal-rapor-url="{{ url_for('filo.finansal_rapor', ekipman_id=ekipman.id) }}"
                         data-csrf-token="{{ csrf_token() }}">
                         
                         <td class="fw-bold text-primary">{{ ekipman.kod }}</td>
@@ -175,6 +177,9 @@
     <div class="border-bottom my-1"></div>
     <a href="#" class="context-menu-item" id="menu-rapor">
         <i class="fas fa-chart-line"></i> Finansal Analiz
+    </a>
+    <a href="#" class="context-menu-item" id="menu-kiralama-gecmisi">
+        <i class="fas fa-history"></i> Kiralama Geçmişi
     </a>
     <a href="#" class="context-menu-item" id="menu-bilgi">
         <i class="fas fa-info-circle"></i> Teknik Detaylar
@@ -341,6 +346,8 @@
             document.getElementById('menu-bilgi').href = currentData.bilgiUrl || '#';
             document.getElementById('menu-duzenle').href = currentData.duzenleUrl || '#';
             document.getElementById('menu-kirala').href = currentData.kiralaUrl || '#';
+            document.getElementById('menu-rapor').href = currentData.finansalRaporUrl || '#';
+            document.getElementById('menu-kiralama-gecmisi').href = currentData.kiralamaGecmisiUrl || '#';
 
             // Önce ekrana al, boyutları ölç, sonra doğru konuma taşı
             contextMenu.style.left = '-9999px';
@@ -407,6 +414,12 @@
         document.getElementById('menu-rapor').addEventListener('click', function(e) {
             e.preventDefault();
             window.location.href = "/filo/finansal_rapor/" + currentData.ekipmanId;
+            hideContextMenu();
+        });
+
+        document.getElementById('menu-kiralama-gecmisi').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.href = currentData.kiralamaGecmisiUrl || '#';
             hideContextMenu();
         });
 

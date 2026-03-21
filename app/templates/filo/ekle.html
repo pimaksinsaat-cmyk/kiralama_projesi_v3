@@ -161,8 +161,9 @@
                     {% for error in form.giris_maliyeti.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
                 </div>
                 <div class="col-md-4 form-group">
-                    {{ form.para_birimi.label(text="Para Birimi:") }}
+                    {{ form.para_birimi.label(text="Satın Alma Para Birimi:") }}
                     {{ form.para_birimi(class="form-control") }}
+                    <small style="color: #666; margin-top: 5px; display: block;">Makinenin kaç hangi para birimi ile satın alındığını seçin.</small>
                 </div>
             </div>
 
@@ -170,20 +171,21 @@
             <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 5px; margin-top: 1rem; border-left: 4px solid #17a2b8;">
                 <p style="font-size: 0.95rem; color: #495057; margin-bottom: 1rem; font-weight: 500;">
                     <i class="fas fa-info-circle" style="color: #17a2b8;"></i> 
-                    Makine satın alındığı tarihte merkez bankasında geçerli olan döviz kurlarını giriniz.<br>
-                    <small style="color: #777;">(Finansal analiz raporu için gereklidir)</small>
+                    <strong>Satın Alma Tarihindeki TCMB Döviz Kurları</strong><br>
+                    <small style="color: #777;">Makinenin fiyatlandırıldığı tarihte merkez bankasında geçerli kur değerlerini giriniz.<br>
+                    (Finansal analiz raporunda makine satın alma maliyetinin TRY cinsinden hesaplanması için gereklidir)</small>
                 </p>
                 <div class="row">
                     <div class="col-md-6 form-group">
-                        {{ form.temin_doviz_kuru_usd.label(text="Satın Alma Tarihindeki USD Kuru:") }}
+                        {{ form.temin_doviz_kuru_usd.label(text="Satın Alma Tarihindeki USD/TRY:") }}
                         {{ form.temin_doviz_kuru_usd(class="form-control", placeholder="Örn: 34,50", id="temin_doviz_kuru_usd", autocomplete="off") }}
-                        <small style="color: #666;">TCMB spot döviz kuru</small>
+                        <small style="color: #666;">Ör: Makine 2024-01-15'te satın alındıysa, o gündeki TCMB USD kuru yazın</small>
                         {% for error in form.temin_doviz_kuru_usd.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
                     </div>
                     <div class="col-md-6 form-group">
-                        {{ form.temin_doviz_kuru_eur.label(text="Satın Alma Tarihindeki EUR Kuru:") }}
+                        {{ form.temin_doviz_kuru_eur.label(text="Satın Alma Tarihindeki EUR/TRY:") }}
                         {{ form.temin_doviz_kuru_eur(class="form-control", placeholder="Örn: 37,25", id="temin_doviz_kuru_eur", autocomplete="off") }}
-                        <small style="color: #666;">TCMB spot döviz kuru</small>
+                        <small style="color: #666;">Ör: Makine 2024-01-15'te satın alındıysa, o gündeki TCMB EUR kuru yazın</small>
                         {% for error in form.temin_doviz_kuru_eur.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
                     </div>
                 </div>

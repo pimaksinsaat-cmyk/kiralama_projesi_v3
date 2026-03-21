@@ -81,6 +81,7 @@
     <div class="filtreleme-card">
         <h3><i class="fas fa-calendar-alt"></i>Tarih Aralığı Seçimi</h3>
         <form method="POST" action="{{ url_for('filo.finansal_rapor', ekipman_id=ekipman.id) }}" class="tarih-input-group">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="date" name="start_date" value="{{ start_date.isoformat() if start_date else '' }}" 
                    title="Raporun başlangıç tarihi" required>
             <input type="date" name="end_date" value="{{ end_date.isoformat() if end_date else '' }}" 
@@ -94,20 +95,43 @@
         <!-- Temin Maliyeti -->
         <div class="kart temin">
             <div class="kart-etiket"><i class="fas fa-box me-2"></i>Satın Alma Maliyeti</div>
-            <div class="kart-deger">{{ "%.2f"|format(ozet.temin_bedeli) }} TRY</div>
+            <div class="kart-deger">
+                {{ "%.2f"|format(ozet.giris_maliyeti_orijinal) }} {{ ozet.para_birimi }}
+                {% if ozet.para_birimi != 'TRY' %}
+                    <br><span style="font-size: 0.7em; color: #666;">{{ "%.2f"|format(ozet.temin_bedeli_try) }} TRY</span>
+                {% endif %}
+            </div>
             <div class="kart-detay">
                 {% if ozet.temin_tarihi %}
-                    <strong>Tarihi:</strong> {{ ozet.temin_tarihi.strftime('%d.%m.%Y') }}<br>
+                    <strong>Satın Alma Tarihi:</strong> {{ ozet.temin_tarihi.strftime('%d.%m.%Y') }}<br>
                 {% endif %}
-                <strong>USD Kuru o tarihte:</strong> {{ "%.4f"|format(ozet.temin_doviz_kuru_usd) }}<br>
-                <strong>EUR Kuru o tarihte:</strong> {{ "%.4f"|format(ozet.temin_doviz_kuru_eur) }}
+                <strong>USD Kuru:</strong> 
+                {% if ozet.temin_doviz_kuru_usd > 0 %}
+                    {{ "%.4f"|format(ozet.temin_doviz_kuru_usd) }}
+                {% else %}
+                    <span style="color: #f59e0b;"><strong>Girilmedi ⚠️</strong></span>
+                {% endif %}
+                <br>
+                <strong>EUR Kuru:</strong> 
+                {% if ozet.temin_doviz_kuru_eur > 0 %}
+                    {{ "%.4f"|format(ozet.temin_doviz_kuru_eur) }}
+                {% else %}
+                    <span style="color: #f59e0b;"><strong>Girilmedi ⚠️</strong></span>
+                {% endif %}
             </div>
         </div>
 
         <!-- Kiralama Geliri -->
         <div class="kart gelir">
-            <div class="kart-etiket"><i class="fas fa-dollar-sign me-2"></i>Kiralama Geliri (TRY)</div>
-            <div class="kart-deger">{{ "%.2f"|format(ozet.kiralama_geliri_try) }} TRY</div>
+            <div class="kart-etiket"><i class="fas fa-dollar-sign me-2"></i>Kiralama Geliri</div>
+            <div class="kart-deger">
+                {% if ozet.para_birimi != 'TRY' %}
+                    {{ "%.2f"|format(ozet.kiralama_geliri_orijinal) }} {{ ozet.para_birimi }}
+                    <br><span style="font-size: 0.7em; color: #666;">{{ "%.2f"|format(ozet.kiralama_geliri_try) }} TRY</span>
+                {% else %}
+                    {{ "%.2f"|format(ozet.kiralama_geliri_try) }} TRY
+                {% endif %}
+            </div>
             <div class="kart-detay">
                 <strong>Kiralama Sayısı:</strong> {{ ozet.kiralama_istatistikleri.toplam_kiralama_sayisi }}<br>
                 <strong>Toplam Gün:</strong> {{ ozet.kiralama_istatistikleri.toplam_gun_sayisi }} gün<br>
@@ -127,14 +151,19 @@
 
         <!-- Net Gelir -->
         <div class="kart net">
-            <div class="kart-etiket"><i class="fas fa-wallet me-2"></i>Net Gelir (TRY)</div>
-            <div class="kart-deger" style="color: {% if ozet.net_gelir >= 0 %}#10b981{% else %}#ef4444{% endif %};">
-                {{ "%.2f"|format(ozet.net_gelir) }} TRY
+            <div class="kart-etiket"><i class="fas fa-wallet me-2"></i>Net Gelir</div>
+            <div class="kart-deger" style="color: {% if ozet.net_gelir_orijinal >= 0 %}#10b981{% else %}#ef4444{% endif %};">
+                {% if ozet.para_birimi != 'TRY' %}
+                    {{ "%.2f"|format(ozet.net_gelir_orijinal) }} {{ ozet.para_birimi }}
+                    <br><span style="font-size: 0.7em; color: #666;">{{ "%.2f"|format(ozet.net_gelir_try) }} TRY</span>
+                {% else %}
+                    {{ "%.2f"|format(ozet.net_gelir_try) }} TRY
+                {% endif %}
             </div>
             <div class="kart-detay">
                 Kiralama Geliri - Giderler<br>
-                <strong style="font-size: 1.1rem; color: {% if ozet.net_gelir >= 0 %}#10b981{% else %}#ef4444{% endif %};">
-                    {% if ozet.net_gelir >= 0 %}✓ Pozitif{% else %}✗ Negatif{% endif %}
+                <strong style="font-size: 1.1rem; color: {% if ozet.net_gelir_orijinal >= 0 %}#10b981{% else %}#ef4444{% endif %};">
+                    {% if ozet.net_gelir_orijinal >= 0 %}✓ Pozitif{% else %}✗ Negatif{% endif %}
                 </strong>
             </div>
         </div>
@@ -181,42 +210,6 @@
     </div>
     {% endif %}
 
-    <!-- KİRALAMA DETAYLARİ TABLOSU -->
-    {% if kiralama_detaylari %}
-    <div class="tablo-card">
-        <h3><i class="fas fa-list-alt me-2"></i>Kiralama Detayları</h3>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Kiralama No</th>
-                        <th>Müşteri</th>
-                        <th>Başlama Tarihi</th>
-                        <th>Bitiş Tarihi</th>
-                        <th style="text-align: right;">Gün</th>
-                        <th style="text-align: right;">Gelir (TRY)</th>
-                        <th style="text-align: right;">USD Kuru</th>
-                        <th style="text-align: right;">EUR Kuru</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for kalem in kiralama_detaylari %}
-                    <tr>
-                        <td><strong>{{ kalem.kiralama_no }}</strong></td>
-                        <td>{{ kalem.musteri }}</td>
-                        <td>{{ kalem.baslangic_tarihi.strftime('%d.%m.%Y') }}</td>
-                        <td>{{ kalem.bitis_tarihi.strftime('%d.%m.%Y') }}</td>
-                        <td style="text-align: right;">{{ kalem.gun_sayisi }}</td>
-                        <td style="text-align: right;"><strong>{{ "%.2f"|format(kalem.gelir_try) }}</strong> TRY</td>
-                        <td style="text-align: right;">{{ "%.4f"|format(kalem.doviz_kuru_usd) }}</td>
-                        <td style="text-align: right;">{{ "%.4f"|format(kalem.doviz_kuru_eur) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
 
     <!-- GERİ BUTONU -->
     <div style="margin-top: 30px; text-align: center;">

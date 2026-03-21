@@ -214,7 +214,8 @@ def bilgi(id):
     ).first_or_404()
     
     kalemler = sorted(ekipman.kiralama_kalemleri, key=lambda k: k.id, reverse=True)
-    return render_template('filo/bilgi.html', ekipman=ekipman, kalemler=kalemler)
+    referrer = request.referrer or url_for('filo.index')
+    return render_template('filo/bilgi.html', ekipman=ekipman, kalemler=kalemler, referrer=referrer)
 
 # -------------------------------------------------------------------------
 # 6. Kiralama Sonlandırma (İnce Tarih Kontrolü ve Şube Ataması)
@@ -412,3 +413,59 @@ def finansal_rapor_api(ekipman_id):
     ozet = EkipmanRaporuService.get_finansal_ozet(ekipman_id, start_date, end_date)
     
     return jsonify(ozet)
+
+
+# -------------------------------------------------------------------------
+# 10. Kiralama Geçmişi (Detaylı Tablo)
+# -------------------------------------------------------------------------
+@filo_bp.route('/kiralama_gecmisi/<int:ekipman_id>', methods=['GET', 'POST'])
+def kiralama_gecmisi(ekipman_id):
+    """
+    Makinenin tüm kiralama geçmişini gösterir:
+    - Her kiralama kalemi için TRY, USD, EUR cinsinden gelir
+    - Döviz kuru bilgileri
+    - Toplam satırlar
+    """
+    ekipman = Ekipman.query.get_or_404(ekipman_id)
+    
+    # Form'dan tarih aralığı al veya varsayılan değerler kullan
+    start_date = None
+    end_date = date.today()
+    
+    if request.method == 'POST':
+        start_str = request.form.get('start_date')
+        end_str = request.form.get('end_date')
+        
+        if start_str:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+        if end_str:
+            end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+    else:
+        # Ilk ziyarette: Makinenin satın alındığı tarihten itibaren
+        if ekipman.created_at:
+            start_date = ekipman.created_at.date()
+    
+    # Kiralama detayları al
+    kiralama_detaylari = EkipmanRaporuService.get_kiralama_detaylari(ekipman_id, start_date, end_date)
+    
+    # Totalleri hesapla
+    total_gun = sum(d['gun_sayisi'] for d in kiralama_detaylari)
+    total_try = sum(d['gelir_try'] for d in kiralama_detaylari)
+    total_usd = sum(d['gelir_usd'] for d in kiralama_detaylari)
+    total_eur = sum(d['gelir_eur'] for d in kiralama_detaylari)
+    
+    # Referrer URL'ini al (form'dan veya request header'dan)
+    referrer = request.form.get('referrer') or request.referrer or url_for('filo.index')
+    
+    return render_template(
+        'filo/kiralama_gecmisi.html',
+        ekipman=ekipman,
+        kiralama_detaylari=kiralama_detaylari,
+        total_gun=total_gun,
+        total_try=total_try,
+        total_usd=total_usd,
+        total_eur=total_eur,
+        start_date=start_date,
+        end_date=end_date,
+        referrer=referrer
+    )

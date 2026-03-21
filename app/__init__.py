@@ -42,8 +42,15 @@ def create_app(config_class=Config):
     @app.before_request
     def require_login():
         acik_endpointler = ['auth.login', 'auth.logout', 'static']
+        
+        # Authenticated AJAX/API endpoint'leri muaf tutmak
+        if request.path.startswith('/subeler/') and request.path.endswith('/makineler'):
+            if current_user.is_authenticated:
+                return None
+        
         if request.endpoint in acik_endpointler:
             return None
+            
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
     
