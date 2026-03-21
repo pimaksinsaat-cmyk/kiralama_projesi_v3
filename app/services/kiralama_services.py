@@ -17,6 +17,7 @@ from app.filo.models import Ekipman
 from app.cari.models import HizmetKaydi
 from app.nakliyeler.models import Nakliye
 from app.araclar.models import Arac as NakliyeAraci
+from app.subeler.models import Sube
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
@@ -63,7 +64,17 @@ class KiralamaKalemiService(BaseService):
     use_soft_delete = False 
 
     @classmethod
-    def sonlandir(cls, kalem_id, bitis_tarihi_str, donus_sube_val, actor_id=None):
+    def sonlandir(
+        cls,
+        kalem_id,
+        bitis_tarihi_str,
+        donus_sube_val,
+        actor_id=None,
+        is_harici_nakliye=False,
+        nakliye_tedarikci_id=None,
+        nakliye_araci_id=None,
+        nakliye_alis_fiyat=None,
+    ):
         """Kiralama kalemini sonlandırır ve makinenin durumunu günceller."""
         kalem = cls.get_by_id(kalem_id)
         if not kalem:
@@ -84,6 +95,56 @@ class KiralamaKalemiService(BaseService):
                 kalem.ekipman.sube_id = int(donus_sube_val)
                 kalem.ekipman.calisma_durumu = 'bosta'
 
+        # Dönüş nakliye bilgilerini güncelle
+        kalem.is_harici_nakliye = bool(is_harici_nakliye)
+        kalem.is_oz_mal_nakliye = not kalem.is_harici_nakliye
+        if kalem.is_harici_nakliye:
+            kalem.nakliye_tedarikci_id = int(nakliye_tedarikci_id or 0) or None
+            kalem.nakliye_araci_id = None
+            kalem.nakliye_alis_fiyat = to_decimal(nakliye_alis_fiyat)
+        else:
+            kalem.nakliye_tedarikci_id = None
+            kalem.nakliye_araci_id = int(nakliye_araci_id or 0) or None
+
+        # Harici nakliye varsa tedarikçi carisine nakliye bedeli işle
+        if kalem.is_harici_nakliye and kalem.nakliye_tedarikci_id and to_decimal(kalem.nakliye_alis_fiyat) > 0:
+            # Aynı kalem için önceki sonlandırma cari kaydını temizle (tekrar sonlandırmada mükerrer engeli)
+            HizmetKaydi.query.filter_by(ozel_id=kalem.id, yon='gelen').delete(synchronize_session=False)
+
+            musteri_adi = "Bilinmeyen Müşteri"
+            if kalem.kiralama and kalem.kiralama.firma_musteri and kalem.kiralama.firma_musteri.firma_adi:
+                musteri_adi = kalem.kiralama.firma_musteri.firma_adi
+
+            if donus_sube_val and str(donus_sube_val).isdigit() and int(donus_sube_val) > 0:
+                donus_sube = db.session.get(Sube, int(donus_sube_val))
+                donus_sube_adi = donus_sube.isim if donus_sube else "Bilinmeyen Şube"
+            elif donus_sube_val == 'tedarikci':
+                donus_sube_adi = "Tedarikçiye İade"
+            else:
+                donus_sube_adi = "Bilinmeyen Şube"
+
+            makine_bilgisi = "Makine"
+            if kalem.ekipman and kalem.ekipman.kod:
+                makine_bilgisi = kalem.ekipman.kod
+            elif any([
+                kalem.harici_ekipman_marka,
+                kalem.harici_ekipman_model,
+                kalem.harici_ekipman_seri_no,
+            ]):
+                marka_model = " ".join(filter(None, [kalem.harici_ekipman_marka, kalem.harici_ekipman_model])).strip()
+                makine_bilgisi = marka_model or kalem.harici_ekipman_seri_no
+
+            aciklama = f"{makine_bilgisi} - {musteri_adi} firmasından {donus_sube_adi} şubesine nakliye bedeli"
+            db.session.add(HizmetKaydi(
+                firma_id=kalem.nakliye_tedarikci_id,
+                tarih=date.today(),
+                tutar=to_decimal(kalem.nakliye_alis_fiyat),
+                yon='gelen',
+                fatura_no=kalem.kiralama.kiralama_form_no if kalem.kiralama else None,
+                ozel_id=kalem.id,
+                aciklama=aciklama
+            ))
+
         cls.save(kalem, is_new=False, auto_commit=False, actor_id=actor_id)
         
         # Cari hesaplamayı tetikle
@@ -101,6 +162,9 @@ class KiralamaKalemiService(BaseService):
         kalem.sonlandirildi = False
         if kalem.ekipman:
             kalem.ekipman.calisma_durumu = 'kirada'
+
+        # Sonlandırma sırasında açılmış harici nakliye cari kaydını geri al
+        HizmetKaydi.query.filter_by(ozel_id=kalem.id, yon='gelen').delete(synchronize_session=False)
 
         cls.save(kalem, is_new=False, auto_commit=False, actor_id=actor_id)
         
@@ -149,12 +213,14 @@ class KiralamaService(BaseService):
                 root = ET.fromstring(response.content)
                 usd = root.find("./Currency[@CurrencyCode='USD']/ForexSelling")
                 eur = root.find("./Currency[@CurrencyCode='EUR']/ForexSelling")
-                if usd is not None: rates['USD'] = Decimal(usd.text)
-                if eur is not None: rates['EUR'] = Decimal(eur.text)
-                
+                if usd is not None:
+                    rates['USD'] = Decimal(usd.text)
+                if eur is not None:
+                    rates['EUR'] = Decimal(eur.text)
+
                 cls._kur_cache = rates
                 cls._kur_son_guncelleme = simdi
-                
+
         except Exception as e:
             logger.warning(f"TCMB Kur çekme hatası: {e}")
             return cls._kur_cache if cls._kur_cache else rates
@@ -162,32 +228,72 @@ class KiralamaService(BaseService):
         return rates
 
     @staticmethod
-    def guncelle_cari_toplam(kiralama_id, auto_commit=True):
-        """Kiralamaya ait ana Müşteri Cari (Gelir) kaydını yeniden hesaplar."""
-        # DÜZELTME: Modern SQLAlchemy db.session.get kullanımı
-        kiralama = db.session.get(Kiralama, kiralama_id)
-        if not kiralama: return
+    def _hesapla_bekleyen_kalem_tutari(kalem, referans_tarih=None):
+        """Kalem için bugüne kadar tahakkuk eden müşteri alacağını hesaplar."""
+        bas = to_date(kalem.kiralama_baslangici)
+        bit = to_date(kalem.kiralama_bitis)
+        if not (bas and bit):
+            return Decimal('0.00')
 
-        cari_kayit = HizmetKaydi.query.filter_by(fatura_no=kiralama.kiralama_form_no, yon='giden').first()
-        
+        if referans_tarih is None:
+            referans_tarih = date.today()
+
+        if bas > referans_tarih:
+            return Decimal('0.00')
+
+        ust_sinir = bit if kalem.sonlandirildi else min(bit, referans_tarih)
+        if ust_sinir < bas:
+            return Decimal('0.00')
+
+        gun = (ust_sinir - bas).days + 1
+        kira_tahakkuk = to_decimal(kalem.kiralama_brm_fiyat) * Decimal(gun)
+        nakliye_tahakkuk = to_decimal(kalem.nakliye_satis_fiyat) if bas <= referans_tarih else Decimal('0.00')
+        return kira_tahakkuk + nakliye_tahakkuk
+
+    @staticmethod
+    def guncelle_cari_toplam(kiralama_id, auto_commit=True):
+        """Kiralamaya ait müşteri carisini bekleyen (tahakkuk eden) tutara göre günceller."""
+        kiralama = db.session.get(Kiralama, kiralama_id)
+        if not kiralama:
+            return
+
+        cari_kayit = HizmetKaydi.query.filter_by(ozel_id=kiralama.id, yon='giden').first()
+        if not cari_kayit:
+            cari_kayit = HizmetKaydi.query.filter_by(fatura_no=kiralama.kiralama_form_no, yon='giden').first()
+
         toplam_gelir = Decimal('0.00')
         for kalem in kiralama.kalemler:
-            bas, bit = to_date(kalem.kiralama_baslangici), to_date(kalem.kiralama_bitis)
-            if not (bas and bit): continue
-            
-            gun = max((bit - bas).days + 1, 0)
-            toplam_gelir += (to_decimal(kalem.kiralama_brm_fiyat) * gun) + to_decimal(kalem.nakliye_satis_fiyat)
+            if not kalem.is_active:
+                continue
+            toplam_gelir += KiralamaService._hesapla_bekleyen_kalem_tutari(kalem)
 
-        if cari_kayit:
-            cari_kayit.tutar = toplam_gelir
+        if toplam_gelir > 0:
+            if not cari_kayit:
+                cari_kayit = HizmetKaydi(
+                    firma_id=kiralama.firma_musteri_id,
+                    tarih=date.today(),
+                    tutar=toplam_gelir,
+                    yon='giden',
+                    fatura_no=kiralama.kiralama_form_no,
+                    ozel_id=kiralama.id,
+                    aciklama=f"Kiralama Bekleyen Bakiye - {kiralama.kiralama_form_no}"
+                )
+            else:
+                cari_kayit.tarih = date.today()
+                cari_kayit.tutar = toplam_gelir
+                cari_kayit.aciklama = f"Kiralama Bekleyen Bakiye - {kiralama.kiralama_form_no}"
+
             db.session.add(cari_kayit)
-            if auto_commit:
-                try:
-                    db.session.commit()
-                except Exception as e:
-                    db.session.rollback()
-                    logger.error(f"Cari Toplam Güncelleme Commit Hatası: {e}")
-                    raise ValidationError("Finansal kayıt güncellenemedi.")
+        elif cari_kayit:
+            db.session.delete(cari_kayit)
+
+        if auto_commit:
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Cari Toplam Güncelleme Commit Hatası: {e}")
+                raise ValidationError("Finansal kayıt güncellenemedi.")
 
     @classmethod
     def create_kiralama_with_relations(cls, kiralama_data, kalemler_data, actor_id=None):
@@ -205,8 +311,6 @@ class KiralamaService(BaseService):
                 kiralama = Kiralama(**kiralama_data)
                 cls.save(kiralama, is_new=True, auto_commit=False, actor_id=actor_id)
                 db.session.flush()
-
-                toplam_gelir = Decimal('0.00')
 
                 for k_data in kalemler_data:
                     bas, bit = to_date(k_data.get('kiralama_baslangici')), to_date(k_data.get('kiralama_bitis'))
@@ -263,11 +367,8 @@ class KiralamaService(BaseService):
                     if any([kalem.nakliye_satis_fiyat > 0, kalem.nakliye_alis_fiyat > 0, kalem.nakliye_araci_id, kalem.nakliye_tedarikci_id]):
                         cls._create_nakliye_ve_cari(kiralama, kalem, makine_adi, bas)
 
-                    gun = (bit - bas).days + 1
-                    toplam_gelir += (kalem.kiralama_brm_fiyat * gun) + kalem.nakliye_satis_fiyat
-
-                if toplam_gelir > 0:
-                    db.session.add(HizmetKaydi(firma_id=kiralama.firma_musteri_id, tarih=date.today(), tutar=toplam_gelir, yon='giden', fatura_no=kiralama.kiralama_form_no, ozel_id=kiralama.id, aciklama=f"Kiralama Bedeli - {kiralama.kiralama_form_no}"))
+                # Sabit toplam yerine bugüne kadar tahakkuk eden bekleyen bakiyeyi yaz
+                cls.guncelle_cari_toplam(kiralama.id, auto_commit=False)
 
                 db.session.commit()
                 return kiralama
@@ -297,7 +398,6 @@ class KiralamaService(BaseService):
                 if hasattr(kiralama, key): setattr(kiralama, key, value)
             cls.save(kiralama, is_new=False, auto_commit=False, actor_id=actor_id)
 
-            toplam_gelir = Decimal('0.00')
             formdan_gelen_idler = []
 
             for k_data in kalemler_data:
@@ -366,17 +466,14 @@ class KiralamaService(BaseService):
                 formdan_gelen_idler.append(aktif.id)
 
                 cls._create_nakliye_ve_cari(kiralama, aktif, makine_adi, bas)
-                
-                gun = (bit - bas).days + 1
-                toplam_gelir += (aktif.kiralama_brm_fiyat * gun) + aktif.nakliye_satis_fiyat
 
             for k in list(kiralama.kalemler):
                 if k.id not in formdan_gelen_idler:
                     if k.ekipman: k.ekipman.calisma_durumu = 'bosta'
                     db.session.delete(k)
 
-            if toplam_gelir > 0:
-                db.session.add(HizmetKaydi(firma_id=kiralama.firma_musteri_id, tarih=date.today(), tutar=toplam_gelir, yon='giden', fatura_no=kiralama.kiralama_form_no, ozel_id=kiralama.id, aciklama=f"Kiralama Güncelleme - {kiralama.kiralama_form_no}"))
+            # Sabit toplam yazmak yerine bekleyen cari tahakkuk kaydını güncelle
+            cls.guncelle_cari_toplam(kiralama.id, auto_commit=False)
 
             db.session.commit()
             return kiralama

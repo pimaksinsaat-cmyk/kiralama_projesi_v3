@@ -1,6 +1,6 @@
 import traceback
 import threading
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask import render_template, redirect, url_for, flash, request, current_app, jsonify
 from flask_login import current_user, login_required
 from sqlalchemy import or_
@@ -139,6 +139,26 @@ def index():
                          .filter(or_(Kiralama.kiralama_form_no.ilike(search), Firma.firma_adi.ilike(search)))
             
         pagination = query.order_by(Kiralama.id.desc()).paginate(page=page, per_page=20)
+        # Liste ekranında görünen kiralamalar için bekleyen cari tutarı güncel tut
+        try:
+            for kiralama in pagination.items:
+                KiralamaService.guncelle_cari_toplam(kiralama.id, auto_commit=False)
+            if pagination.items:
+                db.session.commit()
+        except Exception as sync_err:
+            db.session.rollback()
+            current_app.logger.warning(f"Kiralama cari senkronizasyon uyarısı: {sync_err}")
+
+        recent_threshold = datetime.now(timezone.utc) - timedelta(days=1)
+        recently_returned_kalem_ids = {
+            kalem.id
+            for kiralama in pagination.items
+            for kalem in kiralama.kalemler
+            if kalem.sonlandirildi
+            and kalem.is_active
+            and kalem.updated_at
+            and (kalem.updated_at if kalem.updated_at.tzinfo else kalem.updated_at.replace(tzinfo=timezone.utc)) >= recent_threshold
+        }
         
         return render_template(
             'kiralama/index.html', 
@@ -148,12 +168,14 @@ def index():
             kurlar=KiralamaService.get_tcmb_kurlari(),
             today=date.today(),
             subeler=get_cached_subeler(),
-            nakliye_araclari=get_cached_aktif_araclar()
+            nakliye_araclari=get_cached_aktif_araclar(),
+            nakliye_tedarikci_listesi=Firma.query.filter_by(is_tedarikci=True).order_by(Firma.firma_adi).all(),
+            recently_returned_kalem_ids=recently_returned_kalem_ids
         )
     except Exception as e:
         current_app.logger.error(f"Kiralama Liste Yükleme Hatası: {str(e)}")
         flash(f"Liste yüklenirken bir hata oluştu.", "danger")
-        return render_template('kiralama/index.html', kiralamalar=[], kurlar={}, today=date.today(), subeler=[])
+        return render_template('kiralama/index.html', kiralamalar=[], kurlar={}, today=date.today(), subeler=[], nakliye_araclari=[], nakliye_tedarikci_listesi=[], recently_returned_kalem_ids=set())
 
 @kiralama_bp.route('/ekle', methods=['GET', 'POST'])
 @login_required
@@ -283,8 +305,21 @@ def sonlandir_kalem():
         actor_id = getattr(current_user, 'id', None)
         bitis_str = request.form.get('bitis_tarihi')
         donus_sube_id = request.form.get('donus_sube_id')
+        is_harici_nakliye = request.form.get('is_harici_nakliye') in ('on', '1', 'true', 'True')
+        nakliye_tedarikci_id = request.form.get('nakliye_tedarikci_id', type=int)
+        nakliye_araci_id = request.form.get('nakliye_araci_id', type=int)
+        nakliye_alis_fiyat = request.form.get('nakliye_alis_fiyat')
         
-        KiralamaKalemiService.sonlandir(kalem_id, bitis_str, donus_sube_id, actor_id=actor_id)
+        KiralamaKalemiService.sonlandir(
+            kalem_id,
+            bitis_str,
+            donus_sube_id,
+            actor_id=actor_id,
+            is_harici_nakliye=is_harici_nakliye,
+            nakliye_tedarikci_id=nakliye_tedarikci_id,
+            nakliye_araci_id=nakliye_araci_id,
+            nakliye_alis_fiyat=nakliye_alis_fiyat,
+        )
         flash("Kiralama başarıyla sonlandırıldı.", "success")
     except ValidationError as e:
         flash(f"Hata: {str(e)}", "warning")

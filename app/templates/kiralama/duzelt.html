@@ -220,7 +220,7 @@
             </div>
         </div>
 
-        <div id="hidden-kalemler" style="display: none;">
+        <div id="hidden-kalemler" style="display: none;" data-initial-count="{{ form.kalemler|length }}">
         {% for k_form in form.kalemler %}
         <div class="kalem-group" data-idx="{{ loop.index0 }}">
             {{ k_form.form.id() }}
@@ -261,7 +261,7 @@
 
 <script>
 let editingIdx = null; 
-let indexCounter = {{ form.kalemler|length }}; 
+let indexCounter = parseInt(document.getElementById('hidden-kalemler')?.dataset.initialCount || '0', 10); 
 
 const tbody = document.querySelector('#kalem-tablosu tbody');
 const hiddenContainer = document.getElementById('hidden-kalemler');
@@ -464,10 +464,25 @@ g_btn_ekle.onclick = function(e) {
     const bit = val('g-bitis');
     if(!bas || !bit) return alert("Tarih giriniz!");
 
+    // TARİH TUTARLIĞINI KONTROL ET
+    const basDate = new Date(bas);
+    const bitDate = new Date(bit);
+    if (basDate > bitDate) { 
+        alert("⚠️ HATA: Başlangıç tarihi, Bitiş tarihinden önce olmalıdır!\nLütfen tarih seçimlerini kontrol ediniz."); 
+        return; 
+    }
+
     const isDis = g_dis_ekipman.checked;
     if(isDis && (!val('g-harici-marka') || !val('g-alis-fiyat'))) return alert("Dış tedarik bilgilerini doldurunuz!");
     
     if(!isDis && (val('g-ekipman') === "0" || val('g-ekipman') === "")) return alert("Lütfen bir makine seçiniz!");
+
+    // UNLU KONTROL: Gün sayısı pozitif olmalı
+    const gun = hesaplaGun(bas, bit);
+    if (gun <= 0) { 
+        alert("\u26a0\ufe0f HATA: G\u00fcn say\u0131s\u0131 hesaplanamam\u0131\u015ft\u0131r. L\u00fctfen tarih se\u00e7imlerini kontrol ediniz."); 
+        return;
+    }
 
     let group;
     if(editingIdx === null) {

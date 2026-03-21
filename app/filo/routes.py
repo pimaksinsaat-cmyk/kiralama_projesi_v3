@@ -2,7 +2,7 @@ from app.filo import filo_bp
 from flask import render_template, redirect, url_for, flash, request, current_app, jsonify
 from sqlalchemy.orm import joinedload, subqueryload
 from sqlalchemy import or_, and_
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask_login import current_user
 
 # Servisler ve Doğrulama
@@ -14,6 +14,8 @@ from app.services.base import ValidationError
 from app.filo.models import Ekipman, BakimKaydi
 from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.subeler.models import Sube
+from app.araclar.models import Arac as NakliyeAraci
+from app.firmalar.models import Firma
 
 # Formlar
 from app.filo.forms import EkipmanForm 
@@ -75,23 +77,47 @@ def index():
             page=page, per_page=25, error_out=False
         )
         ekipmanlar = pagination.items
+        recent_threshold = datetime.now(timezone.utc) - timedelta(days=1)
         
         for ekipman in ekipmanlar:
-            ekipman.aktif_kiralama_bilgisi = None 
+            ekipman.aktif_kiralama_bilgisi = None
+            ekipman.iade_iptal_kalem_id = None
+            ekipman.son_musteri_adi = None
             if ekipman.calisma_durumu == 'kirada':
                 aktif_kalemler = [k for k in ekipman.kiralama_kalemleri if not k.sonlandirildi]
                 if aktif_kalemler:
                     ekipman.aktif_kiralama_bilgisi = max(aktif_kalemler, key=lambda k: k.id)
+            else:
+                sonlandirilmis_kalemler = [
+                    k for k in ekipman.kiralama_kalemleri
+                    if k.sonlandirildi and k.is_active and k.updated_at
+                ]
+                if sonlandirilmis_kalemler:
+                    en_guncel_kalem = max(
+                        sonlandirilmis_kalemler,
+                        key=lambda k: k.updated_at or datetime.min.replace(tzinfo=timezone.utc)
+                    )
+                    kalem_updated_at = en_guncel_kalem.updated_at if en_guncel_kalem.updated_at.tzinfo else en_guncel_kalem.updated_at.replace(tzinfo=timezone.utc)
+                    if kalem_updated_at >= recent_threshold:
+                        ekipman.iade_iptal_kalem_id = en_guncel_kalem.id
+                    
+                    # Son müşteri adını ata (boşta durumda)
+                    if en_guncel_kalem.kiralama and en_guncel_kalem.kiralama.firma_musteri:
+                        ekipman.son_musteri_adi = en_guncel_kalem.kiralama.firma_musteri.firma_adi
         
         subeler = Sube.query.all()
+        nakliye_araclari = NakliyeAraci.query.filter_by(is_active=True).all()
+        nakliye_tedarikci_listesi = Firma.query.filter_by(is_tedarikci=True).order_by(Firma.firma_adi).all()
     
     except Exception as e:
         flash(f"Hata: {str(e)}", "danger")
         ekipmanlar = []
         pagination = None
         subeler = []
+        nakliye_araclari = []
+        nakliye_tedarikci_listesi = []
 
-    return render_template('filo/index.html', ekipmanlar=ekipmanlar, pagination=pagination, q=q, subeler=subeler)
+    return render_template('filo/index.html', ekipmanlar=ekipmanlar, pagination=pagination, q=q, subeler=subeler, nakliye_araclari=nakliye_araclari, nakliye_tedarikci_listesi=nakliye_tedarikci_listesi)
 
 # -------------------------------------------------------------------------
 # 2. Yeni Makine Ekleme
@@ -214,7 +240,7 @@ def bilgi(id):
     ).first_or_404()
     
     kalemler = sorted(ekipman.kiralama_kalemleri, key=lambda k: k.id, reverse=True)
-    referrer = request.referrer or url_for('filo.index')
+    referrer = request.args.get('back') or request.referrer or url_for('filo.index')
     return render_template('filo/bilgi.html', ekipman=ekipman, kalemler=kalemler, referrer=referrer)
 
 # -------------------------------------------------------------------------
@@ -363,9 +389,8 @@ def finansal_rapor(ekipman_id):
         if end_str:
             end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
     else:
-        # Ilk ziyarette: Makinenin satın alındığı tarihten itibaren
-        if ekipman.created_at:
-            start_date = ekipman.created_at.date()
+        # İlk ziyarette: Yılbaşından bugüne (YTD)
+        start_date = date(end_date.year, 1, 1)
     
     # Finansal analiz hesapla
     ozet = EkipmanRaporuService.get_finansal_ozet(ekipman_id, start_date, end_date)
@@ -441,9 +466,8 @@ def kiralama_gecmisi(ekipman_id):
         if end_str:
             end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
     else:
-        # Ilk ziyarette: Makinenin satın alındığı tarihten itibaren
-        if ekipman.created_at:
-            start_date = ekipman.created_at.date()
+        # İlk ziyarette: Yılbaşından bugüne (YTD)
+        start_date = date(end_date.year, 1, 1)
     
     # Kiralama detayları al
     kiralama_detaylari = EkipmanRaporuService.get_kiralama_detaylari(ekipman_id, start_date, end_date)
@@ -454,8 +478,22 @@ def kiralama_gecmisi(ekipman_id):
     total_usd = sum(d['gelir_usd'] for d in kiralama_detaylari)
     total_eur = sum(d['gelir_eur'] for d in kiralama_detaylari)
     
-    # Referrer URL'ini al (form'dan veya request header'dan)
-    referrer = request.form.get('referrer') or request.referrer or url_for('filo.index')
+    # Kısır döngüyü kırmak için asıl geri adresini koru:
+    # - return_to: geçmiş sayfasının geri butonunda kullanılacak asıl adres
+    # - bilgi sayfasına giderken bu değer query param ile taşınır
+    return_to_param = request.args.get('return_to')
+    form_referrer = request.form.get('referrer')
+    header_referrer = request.referrer
+
+    referrer = return_to_param or form_referrer
+    if not referrer:
+        if header_referrer and ('/filo/bilgi/' not in header_referrer):
+            referrer = header_referrer
+        else:
+            referrer = url_for('filo.index')
+
+    # Bilgi sayfasından geri gelindiğinde yine bu geçmiş sayfasına dönsün
+    bilgi_back_url = url_for('filo.kiralama_gecmisi', ekipman_id=ekipman_id, return_to=referrer)
     
     return render_template(
         'filo/kiralama_gecmisi.html',
@@ -467,5 +505,6 @@ def kiralama_gecmisi(ekipman_id):
         total_eur=total_eur,
         start_date=start_date,
         end_date=end_date,
-        referrer=referrer
+        referrer=referrer,
+        bilgi_back_url=bilgi_back_url
     )

@@ -16,6 +16,24 @@ class Firma(BaseModel):
     telefon = db.Column(db.String(20), nullable=True)
     eposta = db.Column(db.String(120), nullable=True, index=True)
     iletisim_bilgileri = db.Column(db.Text, nullable=False)
+
+    # --- GIB / UBL Taraf Alanları ---
+    tckn = db.Column(db.String(11), nullable=True, index=True)
+    mersis_no = db.Column(db.String(16), nullable=True)
+    ticaret_sicil_no = db.Column(db.String(50), nullable=True)
+
+    adres_satiri_1 = db.Column(db.String(250), nullable=True)
+    adres_satiri_2 = db.Column(db.String(250), nullable=True)
+    ilce = db.Column(db.String(100), nullable=True)
+    il = db.Column(db.String(100), nullable=True)
+    posta_kodu = db.Column(db.String(20), nullable=True)
+    ulke = db.Column(db.String(100), nullable=False, default='Turkiye')
+    ulke_kodu = db.Column(db.String(2), nullable=False, default='TR')
+
+    web_sitesi = db.Column(db.String(200), nullable=True)
+    etiket_uuid = db.Column(db.String(120), nullable=True, index=True)  # e-Fatura posta kutusu etiketi
+    is_efatura_mukellefi = db.Column(db.Boolean, default=False, nullable=False)
+
     vergi_dairesi = db.Column(db.String(100), nullable=False)
     vergi_no = db.Column(db.String(50), unique=True, nullable=False, index=True)
     
@@ -91,9 +109,34 @@ class Firma(BaseModel):
     odemeler = db.relationship('Odeme', back_populates='firma_musteri', foreign_keys='Odeme.firma_musteri_id', cascade="all, delete-orphan")
     saglanan_nakliye_hizmetleri = db.relationship('KiralamaKalemi', back_populates='nakliye_tedarikci', foreign_keys='KiralamaKalemi.nakliye_tedarikci_id')
     hizmet_kayitlari = db.relationship('HizmetKaydi', back_populates='firma', foreign_keys='HizmetKaydi.firma_id')
+    cari_hareketler = db.relationship('CariHareket', back_populates='firma', foreign_keys='CariHareket.firma_id')
     tedarik_edilen_parcalar = db.relationship('StokKarti', back_populates='varsayilan_tedarikci', foreign_keys='StokKarti.varsayilan_tedarikci_id')
     stok_hareketleri = db.relationship('StokHareket', back_populates='firma', cascade="all, delete-orphan")
     nakliyeler = db.relationship('Nakliye', foreign_keys='Nakliye.firma_id', back_populates='firma', cascade="all, delete-orphan")
+
+    @property
+    def bekleyen_bakiye(self):
+        """
+        Yeni cari_hareket defterinden açık (bekleyen) bakiyeyi hesaplar.
+        Not: Tablo henüz migration ile oluşturulmadan kullanılmamalıdır.
+        """
+        from app.cari.models import CariHareket
+
+        borc = db.session.query(func.sum(CariHareket.kalan_tutar)).filter(
+            CariHareket.firma_id == self.id,
+            CariHareket.yon == 'giden',
+            CariHareket.durum == 'acik',
+            CariHareket.is_deleted == False
+        ).scalar() or 0
+
+        alacak = db.session.query(func.sum(CariHareket.kalan_tutar)).filter(
+            CariHareket.firma_id == self.id,
+            CariHareket.yon == 'gelen',
+            CariHareket.durum == 'acik',
+            CariHareket.is_deleted == False
+        ).scalar() or 0
+
+        return float(borc - alacak)
     
     def __repr__(self):
         return f'<Firma {self.firma_adi}>'

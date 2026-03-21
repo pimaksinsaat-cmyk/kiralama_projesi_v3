@@ -16,6 +16,10 @@ class Hakedis(BaseModel):
             name='ck_hakedis_senaryo'
         ),
         db.CheckConstraint(
+            "belge_tipi IN ('EFATURA', 'EARSIV')",
+            name='ck_hakedis_belge_tipi'
+        ),
+        db.CheckConstraint(
             "fatura_tipi IN ('SATIS', 'IADE', 'TEVKIFAT', 'OZELMATRAH', 'ISTISNA')",
             name='ck_hakedis_tip'
         ),
@@ -28,6 +32,9 @@ class Hakedis(BaseModel):
     # --- Kimlik ve Sözleşme Bağı ---
     hakedis_no = db.Column(db.String(50), unique=True, nullable=True, index=True)
     # nullable=True: Servis katmanında race-condition'sız üretilecek (PMK-2024-000001)
+    fatura_no = db.Column(db.String(50), unique=True, nullable=True, index=True)
+    belge_tipi = db.Column(db.String(20), nullable=False, default='EFATURA')
+
     firma_id = db.Column(db.Integer, db.ForeignKey('firma.id'), nullable=False)
     kiralama_id = db.Column(db.Integer, db.ForeignKey('kiralama.id'), nullable=False)
 
@@ -41,6 +48,9 @@ class Hakedis(BaseModel):
 
     # --- e-Fatura / e-Arşiv Standartları (UBL-TR) ---
     uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
+    duzenleme_tarihi = db.Column(db.Date, nullable=False, default=lambda: datetime.now(timezone.utc).date())
+    duzenleme_saati = db.Column(db.Time, nullable=False, default=lambda: datetime.now(timezone.utc).time().replace(microsecond=0))
+
     fatura_senaryosu = db.Column(db.String(20), default='TEMELFATURA')
     # TEMELFATURA: KDV mükellefi olmayan alıcılar
     # TICARIFATURA: e-Fatura mükellefi alıcılar
@@ -49,6 +59,10 @@ class Hakedis(BaseModel):
     para_birimi = db.Column(db.String(3), default='TRY')
     kur_degeri = db.Column(db.Numeric(10, 4), default=1.0000)
     # para_birimi != TRY ise kur_degeri zorunlu — servis katmanında kontrol edilir
+
+    # UBL tarafında zorunluya yakın başlık alanları
+    siparis_referans_no = db.Column(db.String(50), nullable=True)
+    siparis_referans_tarihi = db.Column(db.Date, nullable=True)
 
     # --- Finansal Toplamlar ---
     toplam_matrah = db.Column(db.Numeric(15, 2), default=0)
@@ -96,9 +110,14 @@ class HakedisKalemi(BaseModel):
     kiralama_kalemi_id = db.Column(db.Integer, nullable=False)  # Sözleşmedeki kalem referansı
     ekipman_id = db.Column(db.Integer, db.ForeignKey('ekipman.id'), nullable=False)
 
+    # GIB/Ubl satırında mal-hizmet adı zorunlu olduğu için ayrı alan
+    mal_hizmet_adi = db.Column(db.String(250), nullable=False, default='Kiralama Hizmeti')
+    mal_hizmet_aciklama = db.Column(db.String(500), nullable=True)
+
     # --- Miktar ve Birim ---
     miktar = db.Column(db.Numeric(10, 2), nullable=False)  # Gün/Ay sayısı
     birim_tipi = db.Column(db.String(10), default='DAY')   # DAY, MON, C62, HUR
+    birim_kodu = db.Column(db.String(10), nullable=False, default='C62')  # UBL UnitCode
 
     # --- Fiyatlandırma ---
     birim_fiyat = db.Column(db.Numeric(15, 2), nullable=False)
@@ -114,12 +133,18 @@ class HakedisKalemi(BaseModel):
 
     # --- Tevkifat ---
     tevkifat_kodu = db.Column(db.String(10), nullable=True)      # GİB tevkifat kodu (604, 601 vb.)
-    tevkifat_orani = db.Column(db.Integer, nullable=True)         # Pay (5/10 için 5)
+    tevkifat_orani = db.Column(db.Integer, nullable=True)         # Geriye dönük uyumluluk
+    tevkifat_pay = db.Column(db.Integer, nullable=True)           # Pay (5/10 için 5)
+    tevkifat_payda = db.Column(db.Integer, nullable=True)         # Payda (5/10 için 10)
     tevkifat_tutari = db.Column(db.Numeric(15, 2), default=0)
 
     # --- Özel Matrah ---
     ozel_matrah_tutari = db.Column(db.Numeric(15, 2), nullable=True)
     ozel_matrah_kdv_orani = db.Column(db.Integer, nullable=True)
+
+    # İstisna faturalarında GİB kodu/nedeni satır bazında taşınabilir
+    istisna_kodu = db.Column(db.String(10), nullable=True)
+    istisna_nedeni = db.Column(db.String(250), nullable=True)
 
     # --- Satır Toplamı ---
     # ara_toplam - iskonto + kdv - tevkifat

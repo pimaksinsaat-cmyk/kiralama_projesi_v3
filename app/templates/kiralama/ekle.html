@@ -342,10 +342,19 @@ g_btn_ekle.onclick = function() {
     const bas = val('g-baslangic'), bit = val('g-bitis');
     if (!bas || !bit) { alert("⚠️ Başlangıç ve Bitiş tarihleri zorunludur!"); return; }
 
+    // TARİH TUTARLIĞINI KONTROL ET
+    const basDate = new Date(bas);
+    const bitDate = new Date(bit);
+    if (basDate > bitDate) { 
+        alert("⚠️ HATA: Başlangıç tarihi, Bitiş tarihinden önce olmalıdır!\nLütfen tarih seçimlerini kontrol ediniz."); 
+        return; 
+    }
+
     const isDis = g_dis_ekipman.checked;
     if (!isDis && (val('g-ekipman') === "0" || val('g-ekipman') === "")) { alert("⚠️ Lütfen bir makine seçiniz!"); return; }
 
     const gun = Math.max(((new Date(bit) - new Date(bas)) / 86400000) + 1, 1);
+    if (gun <= 0) { alert("⚠️ HATA: Gün sayısı hesaplanamamıştır. Lütfen tarih seçimlerini kontrol ediniz."); return; }
     const s_fiyat = parseFloat(val('g-gunluk')) || 0;
     const n_fiyat = parseFloat(val('g-nakliye')) || 0;
     const toplam = (gun * s_fiyat) + n_fiyat;

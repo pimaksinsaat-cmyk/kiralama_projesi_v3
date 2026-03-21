@@ -107,6 +107,12 @@
         .tarih { color: #6c757d; font-size: 0.95rem; }
         .musteri-adi { font-weight: 500; color: #2c3e50; }
         .no { color: #adb5bd; font-size: 0.9rem; }
+        
+        /* Hızlı Tarih Aralığı Butonları */
+        .hizli-araliklar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .hizli-aralik-btn { border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-size: 0.78rem; font-weight: 600; padding: 6px 10px; border-radius: 999px; cursor: pointer; transition: all 0.2s; }
+        .hizli-aralik-btn:hover { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+        .hizli-aralik-btn.active { background: #667eea; color: white; border-color: #667eea; }
     </style>
 {% endblock %}
 
@@ -151,6 +157,12 @@
             <button type="submit" class="btn btn-primary">🔍 Filtrele</button>
             <div></div>
         </form>
+        <div class="hizli-araliklar" aria-label="Hızlı tarih aralığı">
+            <button type="button" class="hizli-aralik-btn" data-days="30">Son 30 Gün</button>
+            <button type="button" class="hizli-aralik-btn" data-days="90">Son 90 Gün</button>
+            <button type="button" class="hizli-aralik-btn" data-days="365">Son 1 Yıl</button>
+            <button type="button" class="hizli-aralik-btn" data-ytd="1">Yılbaşından Bugüne</button>
+        </div>
     </div>
 
     <!-- Tablo -->
@@ -210,22 +222,50 @@
     <!-- Butonlar -->
     <div class="btn-group">
         <a href="{{ referrer }}" class="btn btn-primary">← Geri Dön</a>
-        <a href="{{ url_for('filo.bilgi', id=ekipman.id) }}" class="btn btn-secondary">📋 Makine Bilgisi</a>
+        <a href="{{ url_for('filo.bilgi', id=ekipman.id, back=bilgi_back_url) }}" class="btn btn-secondary">📋 Makine Bilgisi</a>
     </div>
 </div>
 
 <script>
-    // Başlangıç tarihi otomatik ayarla
     document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('.date-filter form');
         const startDateInput = document.getElementById('start_date');
         const endDateInput = document.getElementById('end_date');
-        
-        // Eğer tarih boşsa, bugünün 1 yıl öncesi ve bulgunü ayarla
-        if (!startDateInput.value) {
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-            startDateInput.value = oneYearAgo.toISOString().split('T')[0];
+        const hizliButtons = document.querySelectorAll('.hizli-aralik-btn');
+
+        function updateDateLabels() {
+            hizliButtons.forEach(btn => btn.classList.remove('active'));
         }
+
+        function applyDateRange(startDate, endDate) {
+            startDateInput.value = startDate.toISOString().split('T')[0];
+            endDateInput.value = endDate.toISOString().split('T')[0];
+            updateDateLabels();
+            form.submit();
+        }
+
+        hizliButtons.forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const today = new Date();
+                let startDate;
+
+                if (this.dataset.days) {
+                    const days = parseInt(this.dataset.days);
+                    startDate = new Date(today);
+                    startDate.setDate(startDate.getDate() - days);
+                } else if (this.dataset.ytd === '1') {
+                    startDate = new Date(today.getFullYear(), 0, 1);
+                }
+
+                if (startDate) {
+                    applyDateRange(startDate, today);
+                    this.classList.add('active');
+                }
+            });
+        });
+
+        // İlk yüklemede tarihler boşsa bugüne set et (opsiyonel - route'da zaten yapılmış)
         if (!endDateInput.value) {
             endDateInput.value = new Date().toISOString().split('T')[0];
         }

@@ -23,5 +23,6 @@ def ekle():
         db.session.add(yeni_arac)
         db.session.commit()
         flash(f'{yeni_arac.plaka} plakalı araç sisteme eklendi.', 'success')
-        return redirect(url_for('araclar.liste'))
+        return redirect(url_for('araclar.index'))
+        
     return render_template('araclar/ekle.html', form=form)

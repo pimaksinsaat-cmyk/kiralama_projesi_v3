@@ -1,8 +1,8 @@
-"""Ekipman modeline filtreleme ve teknik detay alanlari eklendi
+"""gib zorunlu alanlar ve cari bekleyen modeller
 
-Revision ID: 02ce34234641
+Revision ID: 452899df577e
 Revises: 
-Create Date: 2026-03-13 07:31:27.631733
+Create Date: 2026-03-21 12:53:37.974765
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '02ce34234641'
+revision = '452899df577e'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -46,6 +46,19 @@ def upgrade():
     sa.Column('telefon', sa.String(length=20), nullable=True),
     sa.Column('eposta', sa.String(length=120), nullable=True),
     sa.Column('iletisim_bilgileri', sa.Text(), nullable=False),
+    sa.Column('tckn', sa.String(length=11), nullable=True),
+    sa.Column('mersis_no', sa.String(length=16), nullable=True),
+    sa.Column('ticaret_sicil_no', sa.String(length=50), nullable=True),
+    sa.Column('adres_satiri_1', sa.String(length=250), nullable=True),
+    sa.Column('adres_satiri_2', sa.String(length=250), nullable=True),
+    sa.Column('ilce', sa.String(length=100), nullable=True),
+    sa.Column('il', sa.String(length=100), nullable=True),
+    sa.Column('posta_kodu', sa.String(length=20), nullable=True),
+    sa.Column('ulke', sa.String(length=100), nullable=False),
+    sa.Column('ulke_kodu', sa.String(length=2), nullable=False),
+    sa.Column('web_sitesi', sa.String(length=200), nullable=True),
+    sa.Column('etiket_uuid', sa.String(length=120), nullable=True),
+    sa.Column('is_efatura_mukellefi', sa.Boolean(), nullable=False),
     sa.Column('vergi_dairesi', sa.String(length=100), nullable=False),
     sa.Column('vergi_no', sa.String(length=50), nullable=False),
     sa.Column('is_musteri', sa.Boolean(), nullable=False),
@@ -73,11 +86,13 @@ def upgrade():
     )
     with op.batch_alter_table('firma', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_firma_eposta'), ['eposta'], unique=False)
+        batch_op.create_index(batch_op.f('ix_firma_etiket_uuid'), ['etiket_uuid'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_firma_adi'), ['firma_adi'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_is_active'), ['is_active'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_is_deleted'), ['is_deleted'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_is_musteri'), ['is_musteri'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_is_tedarikci'), ['is_tedarikci'], unique=False)
+        batch_op.create_index(batch_op.f('ix_firma_tckn'), ['tckn'], unique=False)
         batch_op.create_index(batch_op.f('ix_firma_vergi_no'), ['vergi_no'], unique=True)
 
     op.create_table('kasa',
@@ -124,6 +139,48 @@ def upgrade():
     with op.batch_alter_table('user', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_user_username'), ['username'], unique=True)
 
+    op.create_table('cari_hareket',
+    sa.Column('firma_id', sa.Integer(), nullable=False),
+    sa.Column('tarih', sa.Date(), nullable=False),
+    sa.Column('vade_tarihi', sa.Date(), nullable=True),
+    sa.Column('para_birimi', sa.String(length=3), nullable=False),
+    sa.Column('yon', sa.String(length=20), nullable=False),
+    sa.Column('tutar', sa.Numeric(precision=15, scale=2), nullable=False),
+    sa.Column('kalan_tutar', sa.Numeric(precision=15, scale=2), nullable=False),
+    sa.Column('durum', sa.String(length=10), nullable=False),
+    sa.Column('kaynak_modul', sa.String(length=50), nullable=True),
+    sa.Column('kaynak_id', sa.Integer(), nullable=True),
+    sa.Column('ozel_id', sa.Integer(), nullable=True),
+    sa.Column('belge_no', sa.String(length=50), nullable=True),
+    sa.Column('aciklama', sa.String(length=250), nullable=True),
+    sa.Column('referans_hareket_id', sa.Integer(), nullable=True),
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_by_id', sa.Integer(), nullable=True),
+    sa.Column('updated_by_id', sa.Integer(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True),
+    sa.Column('deleted_by_id', sa.Integer(), nullable=True),
+    sa.CheckConstraint("durum IN ('acik', 'kapali', 'iptal')", name=op.f('ck_cari_hareket_check_cari_hareket_durum')),
+    sa.CheckConstraint("yon IN ('gelen', 'giden')", name=op.f('ck_cari_hareket_check_cari_hareket_yon')),
+    sa.ForeignKeyConstraint(['firma_id'], ['firma.id'], name=op.f('fk_cari_hareket_firma_id_firma')),
+    sa.ForeignKeyConstraint(['referans_hareket_id'], ['cari_hareket.id'], name=op.f('fk_cari_hareket_referans_hareket_id_cari_hareket')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_cari_hareket'))
+    )
+    with op.batch_alter_table('cari_hareket', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_cari_hareket_belge_no'), ['belge_no'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_durum'), ['durum'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_firma_id'), ['firma_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_is_active'), ['is_active'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_is_deleted'), ['is_deleted'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_kaynak_id'), ['kaynak_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_kaynak_modul'), ['kaynak_modul'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_tarih'), ['tarih'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_vade_tarihi'), ['vade_tarihi'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_hareket_yon'), ['yon'], unique=False)
+
     op.create_table('ekipman',
     sa.Column('kod', sa.String(length=100), nullable=False),
     sa.Column('yakit', sa.String(length=50), nullable=False),
@@ -143,6 +200,8 @@ def upgrade():
     sa.Column('calisma_durumu', sa.String(length=50), nullable=False),
     sa.Column('giris_maliyeti', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('para_birimi', sa.String(length=3), nullable=False),
+    sa.Column('temin_doviz_kuru_usd', sa.Numeric(precision=10, scale=4), nullable=True),
+    sa.Column('temin_doviz_kuru_eur', sa.Numeric(precision=10, scale=4), nullable=True),
     sa.Column('sube_id', sa.Integer(), nullable=True),
     sa.Column('firma_tedarikci_id', sa.Integer(), nullable=True),
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -256,6 +315,32 @@ def upgrade():
     with op.batch_alter_table('bakim_kaydi', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_bakim_kaydi_is_active'), ['is_active'], unique=False)
         batch_op.create_index(batch_op.f('ix_bakim_kaydi_is_deleted'), ['is_deleted'], unique=False)
+
+    op.create_table('cari_mahsup',
+    sa.Column('borc_hareket_id', sa.Integer(), nullable=False),
+    sa.Column('alacak_hareket_id', sa.Integer(), nullable=False),
+    sa.Column('tarih', sa.Date(), nullable=False),
+    sa.Column('tutar', sa.Numeric(precision=15, scale=2), nullable=False),
+    sa.Column('aciklama', sa.String(length=250), nullable=True),
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('created_by_id', sa.Integer(), nullable=True),
+    sa.Column('updated_by_id', sa.Integer(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True),
+    sa.Column('deleted_by_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['alacak_hareket_id'], ['cari_hareket.id'], name=op.f('fk_cari_mahsup_alacak_hareket_id_cari_hareket'), ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['borc_hareket_id'], ['cari_hareket.id'], name=op.f('fk_cari_mahsup_borc_hareket_id_cari_hareket'), ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_cari_mahsup'))
+    )
+    with op.batch_alter_table('cari_mahsup', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_cari_mahsup_alacak_hareket_id'), ['alacak_hareket_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_mahsup_borc_hareket_id'), ['borc_hareket_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_mahsup_is_active'), ['is_active'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_mahsup_is_deleted'), ['is_deleted'], unique=False)
+        batch_op.create_index(batch_op.f('ix_cari_mahsup_tarih'), ['tarih'], unique=False)
 
     op.create_table('kiralama_kalemi',
     sa.Column('kiralama_id', sa.Integer(), nullable=False),
@@ -459,6 +544,8 @@ def upgrade():
 
     op.create_table('hakedis',
     sa.Column('hakedis_no', sa.String(length=50), nullable=True),
+    sa.Column('fatura_no', sa.String(length=50), nullable=True),
+    sa.Column('belge_tipi', sa.String(length=20), nullable=False),
     sa.Column('firma_id', sa.Integer(), nullable=False),
     sa.Column('kiralama_id', sa.Integer(), nullable=False),
     sa.Column('proje_adi', sa.String(length=200), nullable=True),
@@ -466,10 +553,14 @@ def upgrade():
     sa.Column('baslangic_tarihi', sa.Date(), nullable=False),
     sa.Column('bitis_tarihi', sa.Date(), nullable=False),
     sa.Column('uuid', sa.String(length=36), nullable=True),
+    sa.Column('duzenleme_tarihi', sa.Date(), nullable=False),
+    sa.Column('duzenleme_saati', sa.Time(), nullable=False),
     sa.Column('fatura_senaryosu', sa.String(length=20), nullable=True),
     sa.Column('fatura_tipi', sa.String(length=20), nullable=True),
     sa.Column('para_birimi', sa.String(length=3), nullable=True),
     sa.Column('kur_degeri', sa.Numeric(precision=10, scale=4), nullable=True),
+    sa.Column('siparis_referans_no', sa.String(length=50), nullable=True),
+    sa.Column('siparis_referans_tarihi', sa.Date(), nullable=True),
     sa.Column('toplam_matrah', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('toplam_kdv', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('toplam_tevkifat', sa.Numeric(precision=15, scale=2), nullable=True),
@@ -486,6 +577,7 @@ def upgrade():
     sa.Column('is_deleted', sa.Boolean(), nullable=False),
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.Column('deleted_by_id', sa.Integer(), nullable=True),
+    sa.CheckConstraint("belge_tipi IN ('EFATURA', 'EARSIV')", name=op.f('ck_hakedis_ck_hakedis_belge_tipi')),
     sa.CheckConstraint("durum IN ('taslak', 'onaylandi', 'faturalasti', 'iptal')", name=op.f('ck_hakedis_ck_hakedis_durum')),
     sa.CheckConstraint("fatura_senaryosu IN ('TEMELFATURA', 'TICARIFATURA')", name=op.f('ck_hakedis_ck_hakedis_senaryo')),
     sa.CheckConstraint("fatura_tipi IN ('SATIS', 'IADE', 'TEVKIFAT', 'OZELMATRAH', 'ISTISNA')", name=op.f('ck_hakedis_ck_hakedis_tip')),
@@ -497,6 +589,7 @@ def upgrade():
     )
     with op.batch_alter_table('hakedis', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_hakedis_durum'), ['durum'], unique=False)
+        batch_op.create_index(batch_op.f('ix_hakedis_fatura_no'), ['fatura_no'], unique=True)
         batch_op.create_index(batch_op.f('ix_hakedis_hakedis_no'), ['hakedis_no'], unique=True)
         batch_op.create_index(batch_op.f('ix_hakedis_is_active'), ['is_active'], unique=False)
         batch_op.create_index(batch_op.f('ix_hakedis_is_deleted'), ['is_deleted'], unique=False)
@@ -505,8 +598,11 @@ def upgrade():
     sa.Column('hakedis_id', sa.Integer(), nullable=False),
     sa.Column('kiralama_kalemi_id', sa.Integer(), nullable=False),
     sa.Column('ekipman_id', sa.Integer(), nullable=False),
+    sa.Column('mal_hizmet_adi', sa.String(length=250), nullable=False),
+    sa.Column('mal_hizmet_aciklama', sa.String(length=500), nullable=True),
     sa.Column('miktar', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('birim_tipi', sa.String(length=10), nullable=True),
+    sa.Column('birim_kodu', sa.String(length=10), nullable=False),
     sa.Column('birim_fiyat', sa.Numeric(precision=15, scale=2), nullable=False),
     sa.Column('ara_toplam', sa.Numeric(precision=15, scale=2), nullable=False),
     sa.Column('iskonto_orani', sa.Numeric(precision=5, scale=2), nullable=True),
@@ -515,9 +611,13 @@ def upgrade():
     sa.Column('kdv_tutari', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('tevkifat_kodu', sa.String(length=10), nullable=True),
     sa.Column('tevkifat_orani', sa.Integer(), nullable=True),
+    sa.Column('tevkifat_pay', sa.Integer(), nullable=True),
+    sa.Column('tevkifat_payda', sa.Integer(), nullable=True),
     sa.Column('tevkifat_tutari', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('ozel_matrah_tutari', sa.Numeric(precision=15, scale=2), nullable=True),
     sa.Column('ozel_matrah_kdv_orani', sa.Integer(), nullable=True),
+    sa.Column('istisna_kodu', sa.String(length=10), nullable=True),
+    sa.Column('istisna_nedeni', sa.String(length=250), nullable=True),
     sa.Column('satir_toplami', sa.Numeric(precision=15, scale=2), nullable=False),
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
@@ -551,6 +651,7 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_hakedis_is_deleted'))
         batch_op.drop_index(batch_op.f('ix_hakedis_is_active'))
         batch_op.drop_index(batch_op.f('ix_hakedis_hakedis_no'))
+        batch_op.drop_index(batch_op.f('ix_hakedis_fatura_no'))
         batch_op.drop_index(batch_op.f('ix_hakedis_durum'))
 
     op.drop_table('hakedis')
@@ -584,6 +685,14 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_kiralama_kalemi_chain_id'))
 
     op.drop_table('kiralama_kalemi')
+    with op.batch_alter_table('cari_mahsup', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_cari_mahsup_tarih'))
+        batch_op.drop_index(batch_op.f('ix_cari_mahsup_is_deleted'))
+        batch_op.drop_index(batch_op.f('ix_cari_mahsup_is_active'))
+        batch_op.drop_index(batch_op.f('ix_cari_mahsup_borc_hareket_id'))
+        batch_op.drop_index(batch_op.f('ix_cari_mahsup_alacak_hareket_id'))
+
+    op.drop_table('cari_mahsup')
     with op.batch_alter_table('bakim_kaydi', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_bakim_kaydi_is_deleted'))
         batch_op.drop_index(batch_op.f('ix_bakim_kaydi_is_active'))
@@ -612,6 +721,19 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_ekipman_is_active'))
 
     op.drop_table('ekipman')
+    with op.batch_alter_table('cari_hareket', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_yon'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_vade_tarihi'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_tarih'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_kaynak_modul'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_kaynak_id'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_is_deleted'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_is_active'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_firma_id'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_durum'))
+        batch_op.drop_index(batch_op.f('ix_cari_hareket_belge_no'))
+
+    op.drop_table('cari_hareket')
     with op.batch_alter_table('user', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_user_username'))
 
@@ -624,11 +746,13 @@ def downgrade():
     op.drop_table('kasa')
     with op.batch_alter_table('firma', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_firma_vergi_no'))
+        batch_op.drop_index(batch_op.f('ix_firma_tckn'))
         batch_op.drop_index(batch_op.f('ix_firma_is_tedarikci'))
         batch_op.drop_index(batch_op.f('ix_firma_is_musteri'))
         batch_op.drop_index(batch_op.f('ix_firma_is_deleted'))
         batch_op.drop_index(batch_op.f('ix_firma_is_active'))
         batch_op.drop_index(batch_op.f('ix_firma_firma_adi'))
+        batch_op.drop_index(batch_op.f('ix_firma_etiket_uuid'))
         batch_op.drop_index(batch_op.f('ix_firma_eposta'))
 
     op.drop_table('firma')

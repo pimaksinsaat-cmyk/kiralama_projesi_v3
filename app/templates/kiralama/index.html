@@ -56,6 +56,33 @@
     .kalem-listesi-item:hover { background-color: #f8f9fa; cursor: context-menu; border-radius: 4px; }
     
     .status-badge { min-width: 135px; text-align: center; font-size: 0.7rem; padding: 4px; font-weight: 700; border-radius: 4px; }
+    .inline-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 8px;
+        padding: 4px 8px;
+        border: 1px solid #f0ad4e;
+        border-radius: 4px;
+        background: #fff8e8;
+        color: #9a6700;
+        font-size: 0.7rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .inline-action-btn:hover {
+        background: #fff1cc;
+        border-color: #d39e00;
+    }
+    .inline-action-note {
+        display: inline-block;
+        margin-left: 6px;
+        font-size: 0.66rem;
+        font-weight: 700;
+        color: #6c757d;
+        vertical-align: middle;
+    }
     .external-badge { font-size: 0.6rem; padding: 2px 5px; background: #dc3545; color: #fff; border-radius: 3px; margin-right: 5px; font-weight: bold; }
     .supplier-info { font-size: 0.75rem; color: #0d6efd; font-weight: 600; margin-top: 2px; display: block; }
     .supplier-label { color: #6c757d; font-weight: normal; font-style: italic; margin-right: 3px; }
@@ -178,7 +205,8 @@
                                 data-ekipman-kod="{{ kalem.ekipman.kod if kalem.ekipman else (kalem.harici_ekipman_marka ~ ' ' ~ kalem.harici_ekipman_model) }}"
                                 data-csrf-token="{{ csrf_token() }}"
                                 data-sonlandirilmis="{{ 1 if kalem.sonlandirildi else 0 }}"
-                                data-swap="{{ 1 if not kalem.is_active else 0 }}">
+                                data-swap="{{ 1 if not kalem.is_active else 0 }}"
+                                data-baslangic="{{ kalem.kiralama_baslangici.strftime('%Y-%m-%d') if kalem.kiralama_baslangici else '' }}">
                                 
                                 
                                 {% if kalem.is_dis_tedarik_ekipman %}
@@ -210,6 +238,17 @@
                             <li>
                                 {% if kalem.sonlandirildi %}
                                     <span class="badge bg-secondary status-badge shadow-sm"><i class="fas fa-check-double me-1"></i> TAMAMLANDI</span>
+                                    {% if kalem.is_active and kalem.id in recently_returned_kalem_ids %}
+                                        <button
+                                            type="button"
+                                            class="inline-action-btn js-iade-iptal-btn"
+                                            data-kalem-id="{{ kalem.id }}"
+                                            data-csrf-token="{{ csrf_token() }}"
+                                            data-ekipman-kod="{{ kalem.ekipman.kod if kalem.ekipman else (kalem.harici_ekipman_marka ~ ' ' ~ kalem.harici_ekipman_model) }}"
+                                            title="İade işlemini geri al (yalnızca 24 saat içinde)">
+                                            <i class="fas fa-undo-alt"></i> İade İptal
+                                        </button>
+                                    {% endif %}
                                 {% else %}
                                     {% if today %}
                                         {% set kalan_gun = (kalem.kiralama_bitis - today).days %}
@@ -305,7 +344,7 @@
                         <label class="form-check-label small fw-bold text-dark" for="hariciNakliyeSonlandir">Dış Nakliye (Taşeron) Kullanıldı</label>
                     </div>
                     
-                    <div class="mb-1">
+                    <div id="ozMalAracDiv" class="mb-1">
                         <select name="nakliye_araci_id" class="form-select form-select-sm border-secondary text-muted">
                             <option value="">Öz Mal Araç Seçiniz (Opsiyonel)...</option>
                             {% if nakliye_araclari %}
@@ -314,6 +353,17 @@
                                 {% endfor %}
                             {% endif %}
                         </select>
+                    </div>
+
+                    <div id="taseronFirmaDiv" class="mb-1" style="display:none;">
+                        <select id="taseronFirmaSelect" name="nakliye_tedarikci_id" class="form-select form-select-sm border-warning">
+                            <option value="" disabled selected>Nakliye firmasını seçin...</option>
+                            {% for f in nakliye_tedarikci_listesi %}
+                                <option value="{{ f.id }}">{{ f.firma_adi }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="number" id="taseronMaliyetInput" name="nakliye_alis_fiyat" class="form-control form-control-sm border-warning mt-2" step="0.01" min="0" placeholder="Nakliye firmasına ödenecek tutar (TL)">
+                        <div class="mt-1 text-warning small fw-bold"><i class="fas fa-info-circle me-1"></i>Seçilen firmanın cari hesabına nakliye kaydı düşer.</div>
                     </div>
                 </div>
             </div>
@@ -337,7 +387,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const contextMenuKalem = document.getElementById('context-menu-kalem');
     const backdrop = document.getElementById('modal-backdrop-sonlandir');
     
-    let state = { kUrl: null, sUrl: null, fNo: null, csrf: null, kId: null, eKod: null, kCsrf: null, rentalId: null };
+    let state = { kUrl: null, sUrl: null, fNo: null, csrf: null, kId: null, eKod: null, kCsrf: null, rentalId: null, baslangic: null };
 
     function closeModals() {
         backdrop.style.display = 'none';
@@ -345,6 +395,23 @@ document.addEventListener('DOMContentLoaded', function() {
         contextMenuKalem.style.display = 'none';
     }
     window.closeModals = closeModals;
+
+    function openSonlandirModal() {
+        document.getElementById('modal-kalem-id').value = state.kId;
+        document.getElementById('modal-ekipman-kod').innerText = state.eKod;
+        document.getElementById('modal-csrf-token').value = state.kCsrf;
+        const today = new Date().toISOString().split('T')[0];
+        const bitisTarihi = document.getElementById('modal-bitis-tarihi');
+        bitisTarihi.value = today;
+        bitisTarihi.min = state.baslangic || '';
+        // reset nakliye fields
+        document.getElementById('hariciNakliyeSonlandir').checked = false;
+        document.getElementById('ozMalAracDiv').style.display = 'block';
+        document.getElementById('taseronFirmaDiv').style.display = 'none';
+        document.getElementById('taseronFirmaSelect').value = '';
+        document.getElementById('taseronMaliyetInput').value = '';
+        backdrop.style.display = 'flex';
+    }
 
     // Form Bazlı Sağ Tık
     document.querySelectorAll('.kiralama-satiri').forEach(row => {
@@ -369,6 +436,7 @@ document.addEventListener('DOMContentLoaded', function() {
             state.kId = this.dataset.kalemId;
             state.eKod = this.dataset.ekipmanKod;
             state.kCsrf = this.dataset.csrfToken;
+            state.baslangic = this.dataset.baslangic || '';
             
             const done = this.dataset.sonlandirilmis === '1';
             const isSwap = this.dataset.swap === '1';
@@ -435,11 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
         };
 
     document.getElementById('menu-sonlandir').onclick = () => {
-        document.getElementById('modal-kalem-id').value = state.kId;
-        document.getElementById('modal-ekipman-kod').innerText = state.eKod;
-        document.getElementById('modal-csrf-token').value = state.kCsrf;
-        document.getElementById('modal-bitis-tarihi').value = new Date().toISOString().split('T')[0];
-        backdrop.style.display = 'flex';
+        openSonlandirModal();
     };
 
     document.getElementById('menu-iptal').onclick = () => {
@@ -449,6 +513,65 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('iptal-kalem-form').submit();
         }
     };
+
+    // Dış Nakliye checkbox toggle
+    document.getElementById('hariciNakliyeSonlandir').addEventListener('change', function() {
+        document.getElementById('ozMalAracDiv').style.display = this.checked ? 'none' : 'block';
+        document.getElementById('taseronFirmaDiv').style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) {
+            document.getElementById('taseronFirmaSelect').value = '';
+            document.getElementById('taseronMaliyetInput').value = '';
+        }
+    });
+
+    // Form gönderim validasyonu
+    document.getElementById('sonlandir-kalem-form').addEventListener('submit', function(e) {
+        const subeVal = this.querySelector('[name="donus_sube_id"]').value;
+        if (!subeVal) {
+            e.preventDefault();
+            alert('Lütfen dönüş şubesi veya teslimat noktasını seçin.');
+            return;
+        }
+        const harici = document.getElementById('hariciNakliyeSonlandir').checked;
+        if (harici) {
+            const sel = document.getElementById('taseronFirmaSelect');
+            const maliyetInput = document.getElementById('taseronMaliyetInput');
+            const maliyet = parseFloat(maliyetInput.value || '0');
+            if (!sel.value) {
+                e.preventDefault();
+                alert('Lütfen harici nakliye firmasını seçin.');
+                return;
+            }
+            if (!(maliyet > 0)) {
+                e.preventDefault();
+                alert('Lütfen nakliye firmasına ödenecek tutarı girin (0\'dan büyük).');
+                maliyetInput.focus();
+                return;
+            }
+            const firmaAdi = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+            const msg = firmaAdi
+                ? `"${firmaAdi}" firmasının cari hesabına ${maliyet.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL nakliye kaydı düşecektir.\n\nOnaylıyor musunuz?`
+                : 'Dış nakliye firması cari hesabına kaydı düşecektir.\n\nOnaylıyor musunuz?';
+            if (!confirm(msg)) { e.preventDefault(); }
+        }
+    });
+
+    document.querySelectorAll('.js-iade-iptal-btn').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const ekipmanKod = button.dataset.ekipmanKod;
+            const kalemId = button.dataset.kalemId;
+            const csrfToken = button.dataset.csrfToken;
+
+            if(confirm(ekipmanKod + ' için iade işlemi geri alınsın mı?')) {
+                document.getElementById('iptal-kalem-id').value = kalemId;
+                document.getElementById('iptal-csrf-token').value = csrfToken;
+                document.getElementById('iptal-kalem-form').submit();
+            }
+        });
+    });
 
     document.getElementById('menu-degisim-iptal').onclick = () => {
     if(confirm(state.eKod + ' için yapılan makine değişimi geri alınacak. Emin misiniz?')) {

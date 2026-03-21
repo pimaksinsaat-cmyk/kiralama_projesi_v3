@@ -5,6 +5,7 @@ from flask import Flask, request, redirect, url_for  # ← 'app' kaldırıldı
 from config import Config
 from flask_wtf.csrf import CSRFProtect 
 from app.extensions import db, migrate, login_manager, server_session
+from sqlalchemy import inspect
 from flask_login import current_user
 from datetime import timedelta
 from flask import session
@@ -114,15 +115,17 @@ def create_app(config_class=Config):
 
         from app.auth.models import User
 
-        if not User.query.filter_by(username='admin').first():
-            yeni_admin = User(
-                username='admin',
-                rol='admin',
-                is_active=True
-            )
-            yeni_admin.set_password('123456')
-            db.session.add(yeni_admin)
-            db.session.commit()
+        # İlk kurulumda tablo henüz yoksa sorgu patlamasın
+        if inspect(db.engine).has_table('user'):
+            if not User.query.filter_by(username='admin').first():
+                yeni_admin = User(
+                    username='admin',
+                    rol='admin',
+                    is_active=True
+                )
+                yeni_admin.set_password('123456')
+                db.session.add(yeni_admin)
+                db.session.commit()
     return app
     
 

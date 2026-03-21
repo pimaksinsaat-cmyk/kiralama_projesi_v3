@@ -112,3 +112,74 @@ class HizmetKaydi(BaseModel):
     
     def __repr__(self):
         return f'<Hizmet {self.tutar} ({self.yon})>'
+
+
+# 8. CARI HAREKET (Bekleyen Bakiye için Ana Defter)
+class CariHareket(BaseModel):
+    """
+    Bekleyen bakiye (açık bakiye) takibi için normalize cari hareket tablosu.
+    Bu model mevcut Odeme/HizmetKaydi akışını bozmaz; kademeli geçiş için eklenmiştir.
+    """
+    __tablename__ = 'cari_hareket'
+
+    __table_args__ = (
+        db.CheckConstraint("yon IN ('gelen', 'giden')", name='check_cari_hareket_yon'),
+        db.CheckConstraint("durum IN ('acik', 'kapali', 'iptal')", name='check_cari_hareket_durum'),
+    )
+
+    firma_id = db.Column(db.Integer, db.ForeignKey('firma.id'), nullable=False, index=True)
+
+    tarih = db.Column(db.Date, nullable=False, default=lambda: datetime.now(timezone.utc).date(), index=True)
+    vade_tarihi = db.Column(db.Date, nullable=True, index=True)
+    para_birimi = db.Column(db.String(3), nullable=False, default='TRY')
+
+    # Mevcut cari modelleriyle uyumlu yön yapısı
+    # giden: firmanın borcu artar, gelen: firmanın borcu azalır
+    yon = db.Column(db.String(20), nullable=False, default='giden', index=True)
+    tutar = db.Column(db.Numeric(15, 2), nullable=False, default=0)
+    kalan_tutar = db.Column(db.Numeric(15, 2), nullable=False, default=0)
+    durum = db.Column(db.String(10), nullable=False, default='acik', index=True)
+
+    # Kaynak izleme (kiralama, nakliye, hizmet, ödeme...)
+    kaynak_modul = db.Column(db.String(50), nullable=True, index=True)
+    kaynak_id = db.Column(db.Integer, nullable=True, index=True)
+    ozel_id = db.Column(db.Integer, nullable=True)
+
+    belge_no = db.Column(db.String(50), nullable=True, index=True)
+    aciklama = db.Column(db.String(250), nullable=True)
+
+    # İptal/düzeltme takibi
+    referans_hareket_id = db.Column(db.Integer, db.ForeignKey('cari_hareket.id'), nullable=True)
+
+    # İlişkiler
+    firma = db.relationship('Firma', back_populates='cari_hareketler', foreign_keys=[firma_id])
+    referans_hareket = db.relationship('CariHareket', remote_side='CariHareket.id', backref='duzeltme_hareketleri')
+
+    @property
+    def bekleyen_tutar(self):
+        return float(self.kalan_tutar or 0)
+
+    def __repr__(self):
+        return f'<CariHareket {self.id} {self.kaynak_tipi}:{self.kaynak_id} {self.yon} {self.tutar}>'
+
+
+# 9. CARI MAHSUP (Borç/Alacak Eşleştirme)
+class CariMahsup(BaseModel):
+    """
+    Bekleyen bakiyeyi kapatmak için iki cari hareketin eşleştirilmesini tutar.
+    Örn: tahsilat satırı ile kiralama borç satırının kısmi/tam kapanması.
+    """
+    __tablename__ = 'cari_mahsup'
+
+    borc_hareket_id = db.Column(db.Integer, db.ForeignKey('cari_hareket.id', ondelete='CASCADE'), nullable=False, index=True)
+    alacak_hareket_id = db.Column(db.Integer, db.ForeignKey('cari_hareket.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    tarih = db.Column(db.Date, nullable=False, default=lambda: datetime.now(timezone.utc).date(), index=True)
+    tutar = db.Column(db.Numeric(15, 2), nullable=False, default=0)
+    aciklama = db.Column(db.String(250), nullable=True)
+
+    borc_hareket = db.relationship('CariHareket', foreign_keys=[borc_hareket_id], backref='borc_mahsuplari')
+    alacak_hareket = db.relationship('CariHareket', foreign_keys=[alacak_hareket_id], backref='alacak_mahsuplari')
+
+    def __repr__(self):
+        return f'<CariMahsup {self.id} borc={self.borc_hareket_id} alacak={self.alacak_hareket_id}>'

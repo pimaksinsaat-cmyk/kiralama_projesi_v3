@@ -48,6 +48,15 @@
     .search-input { border-radius: 8px 0 0 8px; border: 1px solid #cbd5e1; padding: 10px 15px; }
     .search-btn { border-radius: 0 8px 8px 0; padding: 10px 25px; }
 
+    /* Durum + Aksiyon Satır İçi */
+    .durum-aksiyon { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+    .inline-action-btn { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border: 1px solid #f0ad4e; border-radius: 4px; background: #fff8e8; color: #9a6700; font-size: 0.68rem; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background 0.15s, border-color 0.15s; }
+    .inline-action-btn:hover { background: #fff1cc; border-color: #d39e00; }
+
+    /* Özel Modal */
+    .custom-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1040; justify-content: center; align-items: center; }
+    .custom-modal { background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
 </style>
 
 <div class="container-fluid">
@@ -96,7 +105,8 @@
                         <th>Seri No</th>
                         <th>Teknik Özellikler</th>
                         <th>Bulunduğu Şube</th>
-                        <th style="width: 180px;">Durum</th>
+                        <th style="width: 200px;">Müşteri / Durum</th>
+                        <th style="width: 180px;">Durumu</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -134,24 +144,53 @@
                         </td>
 
                         <td>
+                            {% if ekipman.calisma_durumu == 'kirada' and ekipman.aktif_kiralama_bilgisi %}
+                                <small class="d-flex align-items-center gap-2">
+                                    <i class="fas fa-handshake text-primary"></i>
+                                    <strong>{{ ekipman.aktif_kiralama_bilgisi.kiralama.firma_musteri.firma_adi }}da çalışıyor</strong>
+                                </small>
+                            {% elif ekipman.son_musteri_adi %}
+                                <small class="text-muted d-flex align-items-center gap-2">
+                                    <i class="fas fa-undo-alt text-success"></i>
+                                    {{ ekipman.son_musteri_adi }}dan döndü
+                                </small>
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+
+                        <td>
                             {% if ekipman.calisma_durumu == 'kirada' %}
-                                <div class="d-flex align-items-center">
+                                <div class="durum-aksiyon">
                                     <span class="badge-status bg-kirada"><i class="fas fa-truck-loading"></i> Kirada</span>
                                     <button type="button" class="btn btn-link btn-sm text-decoration-none sonlandir-buton ms-2 p-0" 
-                                            data-id="{{ ekipman.id }}" data-kod="{{ ekipman.kod }}" title="Kiralamayı Bitir">
+                                            data-kalem-id="{{ ekipman.aktif_kiralama_bilgisi.id if ekipman.aktif_kiralama_bilgisi else '' }}"
+                                            data-baslangic="{{ ekipman.aktif_kiralama_bilgisi.kiralama_baslangici.strftime('%Y-%m-%d') if ekipman.aktif_kiralama_bilgisi and ekipman.aktif_kiralama_bilgisi.kiralama_baslangici else '' }}"
+                                            data-kod="{{ ekipman.kod }}" title="Kiralamayı Bitir">
                                         <i class="fas fa-sign-in-alt"></i> İade Al
                                     </button>
                                 </div>
                             {% elif ekipman.calisma_durumu == 'serviste' %}
                                 <span class="badge-status bg-serviste"><i class="fas fa-wrench"></i> Serviste</span>
                             {% else %}
-                                <span class="badge-status bg-bosta"><i class="fas fa-check-circle"></i> Boşta</span>
+                                <div class="durum-aksiyon">
+                                    <span class="badge-status bg-bosta"><i class="fas fa-check-circle"></i> Boşta</span>
+                                    {% if ekipman.iade_iptal_kalem_id %}
+                                        <button type="button" class="inline-action-btn js-filo-iade-iptal-btn"
+                                                data-kalem-id="{{ ekipman.iade_iptal_kalem_id }}"
+                                                data-csrf-token="{{ csrf_token() }}"
+                                                data-ekipman-kod="{{ ekipman.kod }}"
+                                                title="İade işlemini geri al (yalnızca 24 saat içinde)">
+                                            <i class="fas fa-undo-alt"></i> İade İptal
+                                        </button>
+                                    {% endif %}
+                                </div>
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted italic"> <i class="fas fa-box-open d-block mb-3 fs-1"></i>
+                        <td colspan="7" class="text-center py-5 text-muted italic"> <i class="fas fa-box-open d-block mb-3 fs-1"></i>
                             Gösterilecek makine bulunamadı.
                         </td>
                     </tr>
@@ -251,44 +290,81 @@
     </div>
 </div>
 
-<div class="modal fade" id="bs-sonlandir-modal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <form method="POST" action="{{ url_for('filo.sonlandir') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="ekipman_id" id="sonlandir-id">
-                <div class="modal-header bg-primary text-white border-0">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-sign-in-alt me-2"></i>Kiralamayı Bitir: <span id="sonlandir-kod-label"></span></h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-            <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold text-primary">Dönüş / İade Tarihi</label>
-                        <input type="date" name="bitis_tarihi" class="form-control form-control-lg" id="sonlandir-tarihi-input" required>
+<div id="modal-backdrop-sonlandir" class="custom-backdrop">
+    <div class="custom-modal border border-primary">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-stopwatch text-danger me-2"></i>Kiralamayı Sonlandır</h5>
+            <button type="button" class="btn-close" onclick="closeModals()"></button>
+        </div>
+        <p class="small text-muted mb-3"><span id="modal-ekipman-kod" class="fw-bold text-primary"></span> için sahadan çekilme ve dönüş bilgilerini girin.</p>
+        
+        <form id="sonlandir-kalem-form" method="POST" action="{{ url_for('kiralama.sonlandir_kalem') }}">
+            <input type="hidden" name="csrf_token" id="modal-csrf-token">
+            <input type="hidden" name="kalem_id" id="modal-kalem-id">
+            
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary"><i class="far fa-calendar-alt me-1"></i>Fiili Bitiş Tarihi:</label>
+                <input type="date" name="bitis_tarihi" id="modal-bitis-tarihi" class="form-control shadow-sm border-primary" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary"><i class="fas fa-warehouse me-1"></i>İade Alınan Şube / Depo:</label>
+                <select name="donus_sube_id" class="form-select shadow-sm border-primary" required>
+                    <option value="" disabled selected>Lütfen dönüş yapılan yeri seçin...</option>
+                    <option value="tedarikci" class="text-danger fw-bold">🏭 Tedarikçi / Sahibine İade Edildi</option>
+                    <optgroup label="Kendi Depolarımız">
+                        {% for s in subeler %}
+                            <option value="{{ s.id }}">{{ s.isim }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="card border-secondary mb-4 shadow-sm bg-light">
+                <div class="card-body py-2 px-3">
+                    <div class="fw-bold text-secondary small mb-2 border-bottom pb-1">
+                        <i class="fas fa-truck-loading me-1"></i> Dönüş Nakliye Bilgileri
                     </div>
-                    
-                    <div class="mb-0">
-                        <label class="form-label fw-bold text-primary">İade Alınan Şube / Depo</label>
-                        <select name="donus_sube_id" class="form-select form-select-lg" required>
-                            <option value="" disabled selected>Lütfen dönüş yapılan depoyu seçin...</option>
-                            {% for s in subeler %}
-                                <option value="{{ s.id }}">{{ s.isim }}</option>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="hariciNakliyeSonlandir" name="is_harici_nakliye">
+                        <label class="form-check-label small fw-bold text-dark" for="hariciNakliyeSonlandir">Dış Nakliye (Taşeron) Kullanıldı</label>
+                    </div>
+                    <div id="ozMalAracDiv" class="mb-1">
+                        <select name="nakliye_araci_id" class="form-select form-select-sm border-secondary text-muted">
+                            <option value="">Öz Mal Araç Seçiniz (Opsiyonel)...</option>
+                            {% if nakliye_araclari %}
+                                {% for arac in nakliye_araclari %}
+                                    <option value="{{ arac.id }}">{{ arac.plaka }} - {{ arac.arac_tipi }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div id="taseronFirmaDiv" class="mb-1" style="display:none;">
+                        <select id="taseronFirmaSelect" name="nakliye_tedarikci_id" class="form-select form-select-sm border-warning">
+                            <option value="" disabled selected>Nakliye firmasını seçin...</option>
+                            {% for f in nakliye_tedarikci_listesi %}
+                                <option value="{{ f.id }}">{{ f.firma_adi }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text mt-2 text-muted">Makinenin şantiyeden döndükten sonra fiziksel olarak indirildiği depoyu seçin.</div>
+                        <input type="number" id="taseronMaliyetInput" name="nakliye_alis_fiyat" class="form-control form-control-sm border-warning mt-2" step="0.01" min="0" placeholder="Nakliye firmasına ödenecek tutar (TL)">
+                        <div class="mt-1 text-warning small fw-bold"><i class="fas fa-info-circle me-1"></i>Seçilen firmanın cari hesabına nakliye kaydı düşer.</div>
                     </div>
-                </div> 
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">İptal</button>
-                    <button type="submit" class="btn btn-primary fw-bold px-4">İşlemi Onayla</button>
                 </div>
-            </form>
-        </div>
+            </div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary fw-bold shadow"><i class="fas fa-check-circle me-2"></i> KİRALAMAYİ TAMAMLA</button>
+            </div>
+        </form>
     </div>
 </div>
 
 <form id="delete-form" method="POST" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<form id="filo-iade-iptal-form" method="POST" action="{{ url_for('kiralama.iptal_et_kalem') }}" style="display:none;">
+    <input type="hidden" name="csrf_token" id="filo-iptal-csrf-token">
+    <input type="hidden" name="kalem_id" id="filo-iptal-kalem-id">
 </form>
 
 <!-- Filtre Modalı Dahil Ediliyor -->
@@ -298,14 +374,23 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const maintenanceModal = new bootstrap.Modal(document.getElementById('bs-bakim-modal'));
-        const endRentalModal = new bootstrap.Modal(document.getElementById('bs-sonlandir-modal'));
         const subeModal = new bootstrap.Modal(document.getElementById('bs-sube-modal'));
+        const backdrop = document.getElementById('modal-backdrop-sonlandir');
         const contextMenu = document.getElementById('context-menu');
         let currentData = {};
 
         function hideContextMenu() {
             contextMenu.style.display = 'none';
         }
+
+        function closeModals() {
+            backdrop.style.display = 'none';
+        }
+        window.closeModals = closeModals;
+
+        backdrop.addEventListener('click', function(e) {
+            if (e.target === backdrop) closeModals();
+        });
 
         function addLongPressListener(element, callback) {
             let timer;
@@ -426,10 +511,75 @@
         document.querySelectorAll('.sonlandir-buton').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                document.getElementById('sonlandir-id').value = this.dataset.id;
-                document.getElementById('sonlandir-kod-label').textContent = this.dataset.kod;
-                document.getElementById('sonlandir-tarihi-input').value = new Date().toISOString().split('T')[0];
-                endRentalModal.show();
+                const row = this.closest('tr');
+                document.getElementById('modal-kalem-id').value = this.dataset.kalemId;
+                document.getElementById('modal-ekipman-kod').textContent = this.dataset.kod;
+                document.getElementById('modal-csrf-token').value = row ? row.dataset.csrfToken : '';
+                const bitisTarihi = document.getElementById('modal-bitis-tarihi');
+                bitisTarihi.value = new Date().toISOString().split('T')[0];
+                bitisTarihi.min = this.dataset.baslangic || '';
+                // reset nakliye fields
+                document.getElementById('hariciNakliyeSonlandir').checked = false;
+                document.getElementById('ozMalAracDiv').style.display = 'block';
+                document.getElementById('taseronFirmaDiv').style.display = 'none';
+                document.getElementById('taseronFirmaSelect').value = '';
+                document.getElementById('taseronMaliyetInput').value = '';
+                backdrop.style.display = 'flex';
+            });
+        });
+
+        // Dış Nakliye checkbox toggle
+        document.getElementById('hariciNakliyeSonlandir').addEventListener('change', function() {
+            document.getElementById('ozMalAracDiv').style.display = this.checked ? 'none' : 'block';
+            document.getElementById('taseronFirmaDiv').style.display = this.checked ? 'block' : 'none';
+            if (!this.checked) {
+                document.getElementById('taseronFirmaSelect').value = '';
+                document.getElementById('taseronMaliyetInput').value = '';
+            }
+        });
+
+        // Form gönderim validasyonu
+        document.getElementById('sonlandir-kalem-form').addEventListener('submit', function(e) {
+            const subeVal = this.querySelector('[name="donus_sube_id"]').value;
+            if (!subeVal) {
+                e.preventDefault();
+                alert('Lütfen dönüş şubesi veya teslimat noktasını seçin.');
+                return;
+            }
+            const harici = document.getElementById('hariciNakliyeSonlandir').checked;
+            if (harici) {
+                const sel = document.getElementById('taseronFirmaSelect');
+                const maliyetInput = document.getElementById('taseronMaliyetInput');
+                const maliyet = parseFloat(maliyetInput.value || '0');
+                if (!sel.value) {
+                    e.preventDefault();
+                    alert('Lütfen harici nakliye firmasını seçin.');
+                    return;
+                }
+                if (!(maliyet > 0)) {
+                    e.preventDefault();
+                    alert('Lütfen nakliye firmasına ödenecek tutarı girin (0\'dan büyük).');
+                    maliyetInput.focus();
+                    return;
+                }
+                const firmaAdi = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+                const msg = firmaAdi
+                    ? `"${firmaAdi}" firmasının cari hesabına ${maliyet.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL nakliye kaydı düşecektir.\n\nOnaylıyor musunuz?`
+                    : 'Dış nakliye firması cari hesabına kayıt düşecektir.\n\nOnaylıyor musunuz?';
+                if (!confirm(msg)) { e.preventDefault(); }
+            }
+        });
+
+        document.querySelectorAll('.js-filo-iade-iptal-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (confirm(this.dataset.ekipmanKod + ' için iade işlemi geri alınsın mı?')) {
+                    document.getElementById('filo-iptal-kalem-id').value = this.dataset.kalemId;
+                    document.getElementById('filo-iptal-csrf-token').value = this.dataset.csrfToken;
+                    document.getElementById('filo-iade-iptal-form').submit();
+                }
             });
         });
 
