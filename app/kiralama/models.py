@@ -7,6 +7,8 @@ class Kiralama(BaseModel):
     
     
     kiralama_form_no = db.Column(db.String(100), nullable=True)
+    makine_calisma_adresi = db.Column(db.Text, nullable=True)
+    kiralama_olusturma_tarihi = db.Column(db.Date, nullable=True)  # Form ilk hazırlandı ğında set edilir, sonra değişmez
     kdv_orani = db.Column(db.Integer, nullable=False, default=20)
     
     # Döviz kurları için yüksek hassasiyet (Numeric)
@@ -57,6 +59,8 @@ class KiralamaKalemi(BaseModel):
     is_oz_mal_nakliye = db.Column(db.Boolean, default=True)
     is_harici_nakliye = db.Column(db.Boolean, default=False)
     nakliye_satis_fiyat = db.Column(db.Numeric(15, 2), nullable=True, default=0.0) 
+    donus_nakliye_fatura_et = db.Column(db.Boolean, default=False, nullable=False)
+    donus_nakliye_satis_fiyat = db.Column(db.Numeric(15, 2), nullable=True)
     nakliye_alis_fiyat = db.Column(db.Numeric(15, 2), nullable=True, default=0.0) 
     nakliye_tedarikci_id = db.Column(db.Integer, db.ForeignKey('firma.id'), nullable=True)
     nakliye_araci_id = db.Column(db.Integer, db.ForeignKey('ekipman.id'), nullable=True)

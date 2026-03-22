@@ -137,9 +137,19 @@
                     {{ form.kapali_yukseklik(class="form-control text-danger fw-bold", placeholder="Geçiş (m)", step="0.01") }}
                 </div>
             </div>
-            <div class="custom-checkbox">
-                {{ form.ic_mekan_uygun() }}
-                <label for="ic_mekan_uygun">Sadece İç Mekan (İz Yapmayan Beyaz Lastik)</label>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <div class="custom-checkbox">
+                        {{ form.ic_mekan_uygun() }}
+                        <label for="ic_mekan_uygun">Sadece İç Mekan</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="custom-checkbox">
+                        {{ form.arazi_tipi_uygun() }}
+                        <label for="arazi_tipi_uygun">Arazi Tipi</label>
+                    </div>
+                </div>
             </div>
         </fieldset>
         <!-- / YENİ EKLENEN -->
@@ -167,29 +177,6 @@
                 </div>
             </div>
 
-            <!-- Satın Alma Tarihindeki Döviz Kurları (Finansal Analiz için) -->
-            <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 5px; margin-top: 1rem; border-left: 4px solid #17a2b8;">
-                <p style="font-size: 0.95rem; color: #495057; margin-bottom: 1rem; font-weight: 500;">
-                    <i class="fas fa-info-circle" style="color: #17a2b8;"></i> 
-                    <strong>Satın Alma Tarihindeki TCMB Döviz Kurları</strong><br>
-                    <small style="color: #777;">Makinenin fiyatlandırıldığı tarihte merkez bankasında geçerli kur değerlerini giriniz.<br>
-                    (Finansal analiz raporunda makine satın alma maliyetinin TRY cinsinden hesaplanması için gereklidir)</small>
-                </p>
-                <div class="row">
-                    <div class="col-md-6 form-group">
-                        {{ form.temin_doviz_kuru_usd.label(text="Satın Alma Tarihindeki USD/TRY:") }}
-                        {{ form.temin_doviz_kuru_usd(class="form-control", placeholder="Örn: 34,50", id="temin_doviz_kuru_usd", autocomplete="off") }}
-                        <small style="color: #666;">Ör: Makine 2024-01-15'te satın alındıysa, o gündeki TCMB USD kuru yazın</small>
-                        {% for error in form.temin_doviz_kuru_usd.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
-                    </div>
-                    <div class="col-md-6 form-group">
-                        {{ form.temin_doviz_kuru_eur.label(text="Satın Alma Tarihindeki EUR/TRY:") }}
-                        {{ form.temin_doviz_kuru_eur(class="form-control", placeholder="Örn: 37,25", id="temin_doviz_kuru_eur", autocomplete="off") }}
-                        <small style="color: #666;">Ör: Makine 2024-01-15'te satın alındıysa, o gündeki TCMB EUR kuru yazın</small>
-                        {% for error in form.temin_doviz_kuru_eur.errors %}<span style="color: red;">[{{ error }}]</span>{% endfor %}
-                    </div>
-                </div>
-            </div>
         </fieldset>
 
         <div class="butonlar">
@@ -205,5 +192,60 @@
         const bugunYil = new Date().getFullYear();
         yilInput.value = bugunYil; 
     }
+
+    // Teknik olculer/agrlik alanlarinda 1,25 girisini 1.25 formatina cevir.
+    (function () {
+        const decimalFields = ['agirlik', 'genislik', 'uzunluk', 'kapali_yukseklik'];
+        const form = document.querySelector('form');
+
+        function normalizeDecimal(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return rawValue;
+            }
+
+            let value = String(rawValue).trim().replace(/\s+/g, '');
+            if (!value) {
+                return value;
+            }
+
+            if (value.includes(',') && value.includes('.')) {
+                if (value.lastIndexOf(',') > value.lastIndexOf('.')) {
+                    value = value.replace(/\./g, '').replace(',', '.');
+                } else {
+                    value = value.replace(/,/g, '');
+                }
+            } else if (value.includes(',')) {
+                value = value.replace(',', '.');
+            }
+
+            return value;
+        }
+
+        decimalFields.forEach((fieldName) => {
+            const input = document.getElementById(fieldName);
+            if (!input) {
+                return;
+            }
+
+            input.setAttribute('inputmode', 'decimal');
+            input.setAttribute('lang', 'tr');
+
+            input.addEventListener('blur', function () {
+                this.value = normalizeDecimal(this.value);
+            });
+        });
+
+        if (form) {
+            form.addEventListener('submit', function () {
+                decimalFields.forEach((fieldName) => {
+                    const input = document.getElementById(fieldName);
+                    if (input) {
+                        input.value = normalizeDecimal(input.value);
+                    }
+                });
+            });
+        }
+    })();
+
 </script>
 {% endblock %}

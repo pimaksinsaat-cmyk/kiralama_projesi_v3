@@ -9,6 +9,7 @@ from app.fatura.models import Hakedis
 from app.kiralama.models import Kiralama
 from app.services.fatura_services import FaturaService
 from app.services.base import ValidationError
+from app.services.operation_log_service import OperationLogService
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +61,32 @@ def olustur():
                 f"{hakedis.hakedis_no} numaralı hakediş taslağı başarıyla oluşturuldu.",
                 "success"
             )
+            OperationLogService.log(
+                module='fatura', action='olustur',
+                user_id=current_user.id, username=getattr(current_user, 'username', None),
+                entity_type='Hakedis', entity_id=hakedis.id,
+                description=f"{hakedis.hakedis_no} hakedış taslakğı oluşturuldu.",
+                success=True
+            )
             return redirect(url_for('fatura.detay', id=hakedis.id))
 
         except ValidationError as e:
+            OperationLogService.log(
+                module='fatura', action='olustur',
+                user_id=current_user.id, username=getattr(current_user, 'username', None),
+                entity_type='Hakedis',
+                description=f"Hakedış oluşturma hatası: {str(e)}",
+                success=False
+            )
             flash(str(e), "warning")
         except Exception as e:
+            OperationLogService.log(
+                module='fatura', action='olustur',
+                user_id=current_user.id, username=getattr(current_user, 'username', None),
+                entity_type='Hakedis',
+                description=f"Hakedış oluşturma hatası: {str(e)}",
+                success=False
+            )
             logger.error("Hakediş oluşturma hatası", exc_info=True)
             flash(f"Hata detayı: {str(e)}", "danger")
 
@@ -91,14 +113,35 @@ def cariye_isle(id):
     """Onaylanan hakedişi cari modüle (HizmetKaydi) borç olarak işler."""
     try:
         hakedis = FaturaService.cariye_isle(hakedis_id=id, actor_id=current_user.id)
+        OperationLogService.log(
+            module='fatura', action='cariye_isle',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Hakedış #{id} cari hesaba işlendi: {hakedis.genel_toplam} TL.",
+            success=True
+        )
         flash(
-            f"Hakediş onaylandı ve cari hesaba "
+            f"Hakedış onaylandı ve cari hesaba "
             f"{hakedis.genel_toplam} TL borç kaydedildi.",
             "success"
         )
     except ValidationError as e:
+        OperationLogService.log(
+            module='fatura', action='cariye_isle',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Cari işleme hatası: {str(e)}",
+            success=False
+        )
         flash(str(e), "warning")
     except Exception:
+        OperationLogService.log(
+            module='fatura', action='cariye_isle',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description="Cari işleme sırasında system hatası.",
+            success=False
+        )
         logger.error(f"Cariye isleme hatasi — hakedis_id: {id}", exc_info=True)
         flash("Cari aktarım sırasında bir hata oluştu.", "danger")
 
@@ -114,10 +157,31 @@ def iptal(id):
     """Taslak durumundaki hakedişi iptal eder."""
     try:
         FaturaService.hakedis_iptal(hakedis_id=id, actor_id=current_user.id)
-        flash("Hakediş iptal edildi.", "warning")
+        OperationLogService.log(
+            module='fatura', action='iptal',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Hakedış #{id} iptal edildi.",
+            success=True
+        )
+        flash("Hakedış iptal edildi.", "warning")
     except ValidationError as e:
+        OperationLogService.log(
+            module='fatura', action='iptal',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Hakedış iptal hatası: {str(e)}",
+            success=False
+        )
         flash(str(e), "warning")
     except Exception:
+        OperationLogService.log(
+            module='fatura', action='iptal',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description="Hakedış iptal sistem hatası.",
+            success=False
+        )
         logger.error(f"Hakediş iptal hatası — hakedis_id: {id}", exc_info=True)
         flash("İptal işlemi sırasında bir hata oluştu.", "danger")
 
@@ -146,11 +210,32 @@ def sil(id):
 
     try:
         FaturaService.delete(id, actor_id=current_user.id)
-        flash("Hakediş kaydı arşive kaldırıldı.", "info")
+        OperationLogService.log(
+            module='fatura', action='delete',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Hakedış #{id} arşive kaldırıldı.",
+            success=True
+        )
+        flash("Hakedış kaydı arşive kaldırıldı.", "info")
     except ValidationError as e:
+        OperationLogService.log(
+            module='fatura', action='delete',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description=f"Hakedış silme hatası: {str(e)}",
+            success=False
+        )
         flash(str(e), "warning")
     except Exception:
-        logger.error(f"Hakediş silme hatası — hakedis_id: {id}", exc_info=True)
+        OperationLogService.log(
+            module='fatura', action='delete',
+            user_id=current_user.id, username=getattr(current_user, 'username', None),
+            entity_type='Hakedis', entity_id=id,
+            description="Hakedış silme sistem hatası.",
+            success=False
+        )
+        logger.error(f"Hakedış silme hatası — hakedis_id: {id}", exc_info=True)
         flash("Silme işlemi sırasında bir hata oluştu.", "danger")
 
     return redirect(url_for('fatura.index'))

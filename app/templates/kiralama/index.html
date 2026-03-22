@@ -95,6 +95,13 @@
 
     .custom-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1040; justify-content: center; align-items: center; }
     .custom-modal { background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+    /* Sayfalama */
+    .pagination { display: flex; gap: 4px; list-style: none; padding: 0; margin: 0; }
+    .pagination .page-item .page-link { display: inline-block; padding: 6px 12px; border: 1px solid #dee2e6; border-radius: 4px; color: #667eea; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
+    .pagination .page-item.active .page-link { background: #667eea; border-color: #667eea; color: white; }
+    .pagination .page-item.disabled .page-link { color: #adb5bd; pointer-events: none; }
+    .pagination .page-item .page-link:hover { background: #eef2ff; border-color: #a5b4fc; }
 </style>
 
 <div class="container">
@@ -137,11 +144,22 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <a href="{{ url_for('kiralama.ekle') }}" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm"><i class="fas fa-plus me-2"></i>Yeni Kiralama Kaydı</a>
-            <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary btn-sm ms-2">Ana Ekran</a>
+            
+            <!-- Diğer İşlemler Dropdown -->
+            <div class="btn-group ms-2" role="group">
+                <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-bars me-1"></i>Diğer İşlemler
+                </button>
+                <ul class="dropdown-menu shadow border-0">
+                    <li><a class="dropdown-item" href="{{ url_for('kiralama.excel_disari_aktar') }}"><i class="fas fa-file-excel me-2 text-success"></i>Excel Dışa Aktar</a></li>
+                    <li><a class="dropdown-item" href="#" id="excel-ice-yukle-ac"><i class="fas fa-upload me-2 text-success"></i>Excel'den Yükle</a></li>
+                </ul>
+            </div>
         </div>
         
         <form method="GET" action="{{ url_for('kiralama.index') }}" class="d-flex mb-0" style="width: 35%;">
             <input type="text" name="q" class="form-control form-control-sm me-2 shadow-sm border-secondary" placeholder="Form no, müşteri veya makine kodu ara..." value="{{ q or '' }}">
+            <input type="hidden" name="per_page" value="{{ per_page }}">
             <button type="submit" class="btn btn-dark btn-sm px-4 shadow-sm">ARA</button>
         </form>
     </div>
@@ -194,6 +212,8 @@
                             {% for kalem in kiralama.kalemler %}
                             {# Tutar hesaplama #}
                             {% set g = (kalem.kiralama_bitis - kalem.kiralama_baslangici).days + 1 %}
+                            {% set nk_sayi = 2 if kalem.donus_nakliye_fatura_et else 1 %}
+                            {% set nk_birim = (kalem.nakliye_satis_fiyat or 0) / nk_sayi %}
                             {% set bdl = (g * kalem.kiralama_brm_fiyat) + (kalem.nakliye_satis_fiyat or 0) %}
                             {% set satir_toplam.val = satir_toplam.val + bdl %}
 
@@ -206,7 +226,10 @@
                                 data-csrf-token="{{ csrf_token() }}"
                                 data-sonlandirilmis="{{ 1 if kalem.sonlandirildi else 0 }}"
                                 data-swap="{{ 1 if not kalem.is_active else 0 }}"
-                                data-baslangic="{{ kalem.kiralama_baslangici.strftime('%Y-%m-%d') if kalem.kiralama_baslangici else '' }}">
+                                data-baslangic="{{ kalem.kiralama_baslangici.strftime('%Y-%m-%d') if kalem.kiralama_baslangici else '' }}"
+                                data-nakliye-satis="{{ kalem.nakliye_satis_fiyat or 0 }}"
+                                data-donus-nakliye-satis="{{ kalem.donus_nakliye_satis_fiyat if kalem.donus_nakliye_satis_fiyat is not none else '' }}"
+                                data-donus-fatura-et="{{ 1 if kalem.donus_nakliye_fatura_et else 0 }}">
                                 
                                 
                                 {% if kalem.is_dis_tedarik_ekipman %}
@@ -223,6 +246,15 @@
                                 {% else %}
                                     <span class="text-muted small">Ekipman Verisi Eksik</span>
                                 {% endif %}
+
+                                <div class="small text-muted mt-1">
+                                    {{ g }} Gün x {{ "{:,.2f}".format(kalem.kiralama_brm_fiyat or 0).replace(",", "X").replace(".", ",").replace("X", ".") }} ₺
+                                    +
+                                    {{ nk_sayi }} x {{ "{:,.2f}".format(nk_birim).replace(",", "X").replace(".", ",").replace("X", ".") }} ₺
+                                    =
+                                    <span class="fw-bold">{{ "{:,.2f}".format(bdl).replace(",", "X").replace(".", ",").replace("X", ".") }} ₺</span>
+                                    <span class="ms-1">({{ 'Dönüş dahil' if kalem.donus_nakliye_fatura_et else 'Tek Yön' }})</span>
+                                </div>
                             </li>
                             {% endfor %}
                         </ul>
@@ -274,6 +306,68 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <form method="GET" action="{{ url_for('kiralama.index') }}" class="d-flex align-items-center gap-2 mb-0">
+        <input type="hidden" name="q" value="{{ q or '' }}">
+        <label for="kiralama-per-page" class="small text-muted mb-0">Sayfa başına</label>
+        <select id="kiralama-per-page" name="per_page" class="form-select form-select-sm" style="max-width:130px;" onchange="this.form.submit()">
+            <option value="10" {{ 'selected' if per_page == 10 else '' }}>10</option>
+            <option value="20" {{ 'selected' if per_page == 20 else '' }}>20</option>
+            <option value="50" {{ 'selected' if per_page == 50 else '' }}>50</option>
+            <option value="100" {{ 'selected' if per_page == 100 else '' }}>100</option>
+        </select>
+    </form>
+
+    {% if pagination %}
+    <ul class="pagination mb-0">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('kiralama.index', page=pagination.prev_num, per_page=per_page, q=q) }}">&laquo;</a>
+        </li>
+        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+            {% if page_num %}
+            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('kiralama.index', page=page_num, per_page=per_page, q=q) }}">{{ page_num }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+            {% endif %}
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('kiralama.index', page=pagination.next_num, per_page=per_page, q=q) }}">&raquo;</a>
+        </li>
+    </ul>
+    {% endif %}
+</div>
+
+<!-- Excel İçe Aktarım Formu (Gizli) -->
+<form id="excel-ice-yukle-form" method="POST" action="{{ url_for('kiralama.excel_ice_yukle') }}" enctype="multipart/form-data" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm_password" id="excel-confirm-password-hidden">
+    <input type="file" name="excel_file" id="excel-ice-yukle-input" accept=".xlsx">
+</form>
+
+<!-- Şifre Doğrulama Modal -->
+<div class="modal fade" id="excel-password-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-shield-alt me-2 text-warning"></i>Güvenlik Doğrulaması</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Excel'den toplu veri yüklemesi için kullanıcı şifrenizi tekrar girin.</p>
+                <label for="excel-confirm-password" class="form-label fw-semibold">Şifre</label>
+                <input type="password" id="excel-confirm-password" class="form-control" autocomplete="current-password" placeholder="Şifrenizi girin">
+                <div class="form-text">Doğrulama sonrası Excel dosyası seçimi açılacaktır.</div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" id="excel-password-confirm-btn">Devam Et</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -365,6 +459,19 @@
                         <input type="number" id="taseronMaliyetInput" name="nakliye_alis_fiyat" class="form-control form-control-sm border-warning mt-2" step="0.01" min="0" placeholder="Nakliye firmasına ödenecek tutar (TL)">
                         <div class="mt-1 text-warning small fw-bold"><i class="fas fa-info-circle me-1"></i>Seçilen firmanın cari hesabına nakliye kaydı düşer.</div>
                     </div>
+
+                    <div class="mt-2">
+                        <label class="form-label small fw-bold text-secondary">Dönüş Nakliye Satış Bedeli (Müşteri):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" id="donusNakliyeSatisInput" name="donus_nakliye_satis_fiyat" class="form-control form-control-sm" step="0.01" min="0" readonly style="background:#f8f9fa; cursor:not-allowed;">
+                            <span class="input-group-text bg-light text-muted" id="donus-lock-icon"><i class="fas fa-lock"></i></span>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="donusFiyatDegistirCheck">
+                            <label class="form-check-label small text-secondary" for="donusFiyatDegistirCheck">Dönüş nakliyesinde farklı fiyat uygula</label>
+                        </div>
+                        <div class="small text-warning fw-bold mt-1 d-none" id="donus-fark-uyari"><i class="fas fa-exclamation-triangle me-1"></i>Planlanan bedelden fark oluşursa müşteri carisine nakliye farkı işlenecektir.</div>
+                    </div>
                 </div>
             </div>
 
@@ -387,7 +494,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const contextMenuKalem = document.getElementById('context-menu-kalem');
     const backdrop = document.getElementById('modal-backdrop-sonlandir');
     
-    let state = { kUrl: null, sUrl: null, fNo: null, csrf: null, kId: null, eKod: null, kCsrf: null, rentalId: null, baslangic: null };
+    let state = { kUrl: null, sUrl: null, fNo: null, csrf: null, kId: null, eKod: null, kCsrf: null, rentalId: null, baslangic: null, nakliyeSatis: 0, donusNakliyeSatis: null, donusFaturaEt: false };
 
     function closeModals() {
         backdrop.style.display = 'none';
@@ -410,6 +517,31 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('taseronFirmaDiv').style.display = 'none';
         document.getElementById('taseronFirmaSelect').value = '';
         document.getElementById('taseronMaliyetInput').value = '';
+        const donusInput = document.getElementById('donusNakliyeSatisInput');
+        const donusNakTutari = parseFloat(state.nakliyeSatis || 0);
+        const defaultDonus = (state.donusNakliyeSatis !== null && state.donusNakliyeSatis !== '')
+            ? parseFloat(state.donusNakliyeSatis)
+            : (state.donusFaturaEt ? donusNakTutari / 2 : 0);
+        donusInput.value = Number.isFinite(defaultDonus) ? defaultDonus.toFixed(2) : '0.00';
+        // reset fiyat değiştir checkbox
+        const degistirCheck = document.getElementById('donusFiyatDegistirCheck');
+        degistirCheck.checked = false;
+        donusInput.readOnly = true;
+        donusInput.style.background = '#f8f9fa';
+        donusInput.style.cursor = 'not-allowed';
+        document.getElementById('donus-lock-icon').innerHTML = '<i class="fas fa-lock"></i>';
+        document.getElementById('donus-lock-icon').className = 'input-group-text bg-light text-muted';
+        document.getElementById('donus-fark-uyari').classList.add('d-none');
+        // Checkbox etiketini ve uyarı metnini duruma göre güncelle
+        const degistirLabel = document.querySelector('label[for="donusFiyatDegistirCheck"]');
+        const farkUyari = document.getElementById('donus-fark-uyari');
+        if (state.donusFaturaEt) {
+            degistirLabel.textContent = 'Dönüş nakliyesinde farklı fiyat uygula';
+            farkUyari.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Planlanan bedelden fark oluşursa müşteri carisine nakliye farkı işlenecektir.';
+        } else {
+            degistirLabel.textContent = 'Dönüş nakliyesi ekle';
+            farkUyari.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Müşteri carisine dönüş nakliye bedeli olarak işlenecektir.';
+        }
         backdrop.style.display = 'flex';
     }
 
@@ -437,6 +569,9 @@ document.addEventListener('DOMContentLoaded', function() {
             state.eKod = this.dataset.ekipmanKod;
             state.kCsrf = this.dataset.csrfToken;
             state.baslangic = this.dataset.baslangic || '';
+            state.nakliyeSatis = this.dataset.nakliyeSatis || '0';
+            state.donusNakliyeSatis = this.dataset.donusNakliyeSatis || '';
+            state.donusFaturaEt = this.dataset.donusFaturaEt === '1';
             
             const done = this.dataset.sonlandirilmis === '1';
             const isSwap = this.dataset.swap === '1';
@@ -527,9 +662,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Form gönderim validasyonu
     document.getElementById('sonlandir-kalem-form').addEventListener('submit', function(e) {
         const subeVal = this.querySelector('[name="donus_sube_id"]').value;
+        const donusSatis = parseFloat(document.getElementById('donusNakliyeSatisInput').value || '0');
         if (!subeVal) {
             e.preventDefault();
             alert('Lütfen dönüş şubesi veya teslimat noktasını seçin.');
+            return;
+        }
+        if (donusSatis < 0) {
+            e.preventDefault();
+            alert('Dönüş nakliye satış bedeli negatif olamaz.');
             return;
         }
         const harici = document.getElementById('hariciNakliyeSonlandir').checked;
@@ -585,6 +726,79 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     window.onclick = (e) => { if(e.target === backdrop) closeModals(); else { contextMenu.style.display = 'none'; contextMenuKalem.style.display = 'none'; } };
+
+    // Dönüş fiyatı değiştir checkbox toggle
+    document.getElementById('donusFiyatDegistirCheck').addEventListener('change', function() {
+        const donusInput = document.getElementById('donusNakliyeSatisInput');
+        const lockIcon = document.getElementById('donus-lock-icon');
+        const uyari = document.getElementById('donus-fark-uyari');
+        if (this.checked) {
+            donusInput.readOnly = false;
+            donusInput.style.background = '';
+            donusInput.style.cursor = '';
+            donusInput.classList.add('border-warning');
+            lockIcon.innerHTML = '<i class="fas fa-lock-open"></i>';
+            lockIcon.className = 'input-group-text bg-warning text-white';
+            uyari.classList.remove('d-none');
+            donusInput.focus();
+        } else {
+            donusInput.readOnly = true;
+            donusInput.style.background = '#f8f9fa';
+            donusInput.style.cursor = 'not-allowed';
+            donusInput.classList.remove('border-warning');
+            lockIcon.innerHTML = '<i class="fas fa-lock"></i>';
+            lockIcon.className = 'input-group-text bg-light text-muted';
+            uyari.classList.add('d-none');
+        }
+    });
+
+    // ==================== EXCEL İÇE/DIŞA AKTARIMI ====================
+    const excelImportTrigger = document.getElementById('excel-ice-yukle-ac');
+    const excelImportInput = document.getElementById('excel-ice-yukle-input');
+    const excelImportForm = document.getElementById('excel-ice-yukle-form');
+    const excelPasswordModalEl = document.getElementById('excel-password-modal');
+    const excelPasswordInput = document.getElementById('excel-confirm-password');
+    const excelPasswordHidden = document.getElementById('excel-confirm-password-hidden');
+    const excelPasswordConfirmBtn = document.getElementById('excel-password-confirm-btn');
+    const excelPasswordModal = excelPasswordModalEl ? new bootstrap.Modal(excelPasswordModalEl) : null;
+
+    if (
+        excelImportTrigger && excelImportInput && excelImportForm &&
+        excelPasswordModal && excelPasswordInput && excelPasswordHidden && excelPasswordConfirmBtn
+    ) {
+        excelImportTrigger.addEventListener('click', function(e) {
+            e.preventDefault();
+            excelPasswordInput.value = '';
+            excelPasswordHidden.value = '';
+            excelPasswordModal.show();
+        });
+
+        excelPasswordConfirmBtn.addEventListener('click', function() {
+            const pwd = (excelPasswordInput.value || '').trim();
+            if (!pwd) {
+                excelPasswordInput.focus();
+                return;
+            }
+            excelPasswordHidden.value = pwd;
+            excelPasswordModal.hide();
+            excelImportInput.click();
+        });
+
+        excelImportInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                excelImportForm.submit();
+            } else {
+                excelPasswordHidden.value = '';
+            }
+        });
+
+        excelPasswordInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                excelPasswordConfirmBtn.click();
+            }
+        });
+    }
 });
 </script>
 {% endblock %}

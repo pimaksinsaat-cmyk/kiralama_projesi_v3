@@ -179,5 +179,60 @@
         const bugunYil = new Date().getFullYear();
         yilInput.value = bugunYil; 
     }
+
+    // Teknik olculer/agrlik alanlarinda 1,25 girisini 1.25 formatina cevir.
+    (function () {
+        const decimalFields = ['agirlik', 'genislik', 'uzunluk', 'kapali_yukseklik'];
+        const form = document.querySelector('form');
+
+        function normalizeDecimal(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return rawValue;
+            }
+
+            let value = String(rawValue).trim().replace(/\s+/g, '');
+            if (!value) {
+                return value;
+            }
+
+            if (value.includes(',') && value.includes('.')) {
+                if (value.lastIndexOf(',') > value.lastIndexOf('.')) {
+                    value = value.replace(/\./g, '').replace(',', '.');
+                } else {
+                    value = value.replace(/,/g, '');
+                }
+            } else if (value.includes(',')) {
+                value = value.replace(',', '.');
+            }
+
+            return value;
+        }
+
+        decimalFields.forEach((fieldName) => {
+            const input = document.getElementById(fieldName);
+            if (!input) {
+                return;
+            }
+
+            input.setAttribute('inputmode', 'decimal');
+            input.setAttribute('lang', 'tr');
+
+            input.addEventListener('blur', function () {
+                this.value = normalizeDecimal(this.value);
+            });
+        });
+
+        if (form) {
+            form.addEventListener('submit', function () {
+                decimalFields.forEach((fieldName) => {
+                    const input = document.getElementById(fieldName);
+                    if (input) {
+                        input.value = normalizeDecimal(input.value);
+                    }
+                });
+            });
+        }
+    })();
+
 </script>
 {% endblock %}

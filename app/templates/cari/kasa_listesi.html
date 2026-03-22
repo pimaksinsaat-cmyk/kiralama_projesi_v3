@@ -73,6 +73,7 @@
                 <tr>
                     <th>Hesap Adı</th>
                     <th>Tipi</th>
+                    <th>Banka Şube Adı</th>
                     <th>Para Birimi</th>
                     <th class="text-end">Güncel Bakiye</th>
                 </tr>
@@ -101,6 +102,7 @@
                             <span class="badge bg-secondary"><i class="fa fa-wallet"></i> Nakit</span>
                         {% endif %}
                     </td>
+                    <td>{{ kasa.banka_sube_adi if kasa.banka_sube_adi else '-' }}</td>
                     <td>{{ kasa.para_birimi }}</td>
                     <td class="text-end">
                         {% set bakiye_val = kasa.bakiye | float %}
@@ -111,7 +113,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" class="text-center text-muted py-5">
+                    <td colspan="5" class="text-center text-muted py-5">
                         <i class="fa fa-inbox fa-3x mb-3"></i><br>
                         Henüz kayıtlı kasa veya banka hesabı bulunmuyor.
                     </td>
@@ -323,11 +325,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- TÜM KASALARI VERİ OLARAK SAKLA ---
-    const tumKasalar = [
-        {% for k in kasalar %}
-        { id: "{{ k.id }}", adi: "{{ k.kasa_adi }}", birim: "{{ k.para_birimi }}", bakiye: parseFloat("{{ k.bakiye }}") || 0 },
-        {% endfor %}
-    ];
+    const tumKasalarEl = document.getElementById('tum-kasalar-json');
+    const tumKasalar = tumKasalarEl ? JSON.parse(tumKasalarEl.textContent || '[]') : [];
 
     // --- CONTEXT MENU & MODAL MANTIĞI ---
     const contextMenu = document.getElementById('context-menu');
@@ -516,5 +515,9 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.addEventListener('click', function(e) { e.stopPropagation(); });
     });
 });
+</script>
+
+<script id="tum-kasalar-json" type="application/json">
+{{ kasalar_json|tojson|safe }}
 </script>
 {% endblock %}

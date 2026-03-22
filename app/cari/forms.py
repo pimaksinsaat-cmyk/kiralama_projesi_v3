@@ -91,6 +91,8 @@ class KasaForm(BaseForm):
         ('USD', 'USD (Dolar)'), 
         ('EUR', 'EUR (Euro)')
     ], default='TRY', validators=[InputRequired()])
+
+    banka_sube_adi = StringField('Banka Şube Adı', validators=[Optional(), Length(max=120)])
     
     bakiye = MoneyField('Açılış Bakiyesi', places=2, default=0.0, validators=[Optional()])
     

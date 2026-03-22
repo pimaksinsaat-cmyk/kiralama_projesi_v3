@@ -11,6 +11,17 @@
     .section-title { font-size: 1rem; font-weight: 800; color: #2d3748; border-bottom: 2px solid #edf2f7; padding-bottom: 8px; margin-bottom: 15px; }
     .table-warning { background-color: #fff3cd !important; transition: background-color 0.3s ease; }
     .passive-area { opacity: 0.5; pointer-events: none; filter: grayscale(0.5); }
+    .form-check-input[type="checkbox"] {
+        border-color: #6c757d;
+        background-color: #dee2e6;
+    }
+    .form-check-input[type="checkbox"]:checked {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    .form-check-input[type="checkbox"]:focus {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
     /* Filtre Butonu Efekti (Ekle sayfasıyla uyumlu) */
     .btn-filter-tool { background: #f0f4ff; border: 1px solid #d1d5db; color: #2563eb; }
     .btn-filter-tool:hover { background: #2563eb; color: white; }
@@ -61,6 +72,10 @@
                         <label>Form No</label>
                         {{ form.kiralama_form_no(class="form-control bg-light", readonly=true) }}
                     </div>
+                    <div class="col-12">
+                        <label>Makine Çalışma Adresi</label>
+                        {{ form.makine_calisma_adresi(class="form-control", rows="3", placeholder="Makinenin çalıştığı şantiye / saha adresi") }}
+                    </div>
                 </div>
             </div>
         </div>
@@ -90,7 +105,7 @@
                                             {% endif %}
                                         </select>
                                         <!-- Filtre Butonu Eklendi -->
-                                        <button type="button" class="btn btn-filter-tool px-3" data-bs-toggle="modal" data-bs-target="#filterModal" title="Filtreleme Asistanını Aç">
+                                        <button type="button" id="g-filter-btn" class="btn btn-filter-tool px-3" data-bs-toggle="modal" data-bs-target="#filterModal" title="Filtreleme Asistanını Aç">
                                             <i class="fas fa-filter"></i> 
                                         </button>
                                     </div>
@@ -140,7 +155,15 @@
                                 <div class="col-6 col-md-4"><label>Model</label><input type="text" id="g-harici-model" class="form-control"></div>
                                 
                                 <div class="col-6 col-md-3"><label>Seri No</label><input type="text" id="g-harici-seri" class="form-control"></div>
-                                <div class="col-6 col-md-3"><label>Makine Tipi</label><input type="text" id="g-harici-tip" class="form-control"></div>
+                                <div class="col-6 col-md-3">
+                                    <label>Makine Tipi</label>
+                                    <select id="g-harici-tip" class="form-select">
+                                        <option value="">--- Tip Seçiniz ---</option>
+                                        {% for tip in tipler %}
+                                        <option value="{{ tip }}">{{ tip }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
                                 <div class="col-6 col-md-2"><label>Kapasite (kg)</label><input type="number" id="g-harici-kapasite" class="form-control"></div>
                                 <div class="col-6 col-md-2"><label>Yükseklik (m)</label><input type="number" id="g-harici-yukseklik" class="form-control"></div>
                                 <div class="col-6 col-md-2"><label>Üretim Yılı</label><input type="text" id="g-harici-yil" class="form-control"></div>
@@ -176,7 +199,16 @@
                                 <div class="col-6 col-md-3"><label>Başlangıç</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
                                 <div class="col-6 col-md-3"><label>Bitiş</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
                                 <div class="col-6 col-md-3"><label class="text-success">Günlük Kira (₺)</label><input type="number" step="0.01" id="g-gunluk" class="form-control border-success"></div>
-                                <div class="col-6 col-md-3"><label class="text-success">Nakliye Bedeli (₺)</label><input type="number" step="0.01" id="g-nakliye" class="form-control border-success"></div>
+                                <div class="col-6 col-md-3">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <label class="text-success mb-0">Nakliye Bedeli (₺)</label>
+                                        <div class="form-check form-switch m-0">
+                                            <input class="form-check-input" type="checkbox" id="g-donus-fatura-et" style="transform: scale(0.9);">
+                                            <label class="form-check-label fw-bold" for="g-donus-fatura-et" style="font-size: 0.80rem; margin-left: 2px;">Dönüş</label>
+                                        </div>
+                                    </div>
+                                    <input type="number" step="0.01" id="g-nakliye" class="form-control border-success">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -241,6 +273,7 @@
             {{ k_form.form.kiralama_brm_fiyat() }}
             {{ k_form.form.kiralama_alis_fiyat() }}
             {{ k_form.form.nakliye_satis_fiyat() }}
+            {{ k_form.form.donus_nakliye_fatura_et() }}
             {{ k_form.form.nakliye_alis_fiyat() }}
             {{ k_form.form.nakliye_tedarikci_id() }}
         </div>
@@ -258,6 +291,7 @@
 
 <!-- Filtre Modalı Dahil Ediliyor -->
 {% include 'kiralama/_filtre_modal.html' %}
+<script id="ekipman-sube-map" type="application/json">{{ ekipman_sube_map|default({}, true)|tojson|safe }}</script>
 
 <script>
 let editingIdx = null; 
@@ -266,6 +300,7 @@ let indexCounter = parseInt(document.getElementById('hidden-kalemler')?.dataset.
 const tbody = document.querySelector('#kalem-tablosu tbody');
 const hiddenContainer = document.getElementById('hidden-kalemler');
 const g_ekipman = document.getElementById('g-ekipman');
+const g_filter_btn = document.getElementById('g-filter-btn');
 const g_ozmal_nakliye = document.getElementById('g-ozmal-nakliye-araci');
 const g_dis_ekipman = document.getElementById('g-dis-ekipman');
 const g_dis_nakliye = document.getElementById('g-dis-nakliye');
@@ -274,9 +309,16 @@ const g_btn_vazgec = document.getElementById('duzenle-vazgec');
 const g_submit_btn = document.getElementById('submit-btn');
 const genelToplamEl = document.getElementById('genel-toplam');
 const infoDiv = document.getElementById('live-calc-info');
+const ekipmanSubeMap = JSON.parse(document.getElementById('ekipman-sube-map')?.textContent || '{}');
 
 const val = id => document.getElementById(id)?.value || "";
 const setVal = (id, v) => { if(document.getElementById(id)) document.getElementById(id).value = v; };
+
+function getOptionTextByValue(selectEl, value) {
+    if (!selectEl) return '';
+    const opt = Array.from(selectEl.options).find(o => String(o.value) === String(value));
+    return opt ? (opt.text || '').trim() : '';
+}
 
 // YERELLEŞTİRME YARDIMCILARI
 function formatTRDate(dateStr) {
@@ -350,6 +392,7 @@ function panelTemizle() {
     
     // Metin alanlarını temizle
     ['g-baslangic', 'g-bitis', 'g-gunluk', 'g-alis-fiyat', 'g-nakliye', 'g-nakliye-alis', 'g-harici-marka', 'g-harici-model', 'g-harici-seri', 'g-harici-tip', 'g-harici-kapasite', 'g-harici-yukseklik', 'g-harici-yil'].forEach(id => setVal(id, ""));
+    document.getElementById('g-donus-fatura-et').checked = false;
     
     // Dropdownları sıfırla ve 'change' olayını tetikle (görsel senkronizasyon için)
     g_ekipman.value = "0";
@@ -392,6 +435,7 @@ function yeniGizliGrupOlustur(idx) {
         <input type="hidden" name="kalemler-${idx}-kiralama_brm_fiyat" value="0">
         <input type="hidden" name="kalemler-${idx}-kiralama_alis_fiyat" value="0">
         <input type="hidden" name="kalemler-${idx}-nakliye_satis_fiyat" value="0">
+        <input type="hidden" name="kalemler-${idx}-donus_nakliye_fatura_et" value="0">
         <input type="hidden" name="kalemler-${idx}-nakliye_alis_fiyat" value="0">
         <input type="hidden" name="kalemler-${idx}-nakliye_tedarikci_id" value="0">
     `;
@@ -401,6 +445,7 @@ function yeniGizliGrupOlustur(idx) {
 g_dis_ekipman.onchange = function() {
     document.getElementById('dis-ekipman-alani').classList.toggle('hidden', !this.checked);
     document.getElementById('g-ekipman').disabled = this.checked;
+    if (g_filter_btn) g_filter_btn.disabled = this.checked;
 };
 
 g_dis_nakliye.onchange = function() {
@@ -417,18 +462,27 @@ function hesaplaGun(bas, bit) {
     return Math.max(diff + 1, 0);
 }
 
+function isTruthyFlag(value) {
+    return ['1', 'true', 'True', 'TRUE'].includes(String(value));
+}
+
 function renderTable() {
     const groups = hiddenContainer.querySelectorAll('.kalem-group');
     tbody.innerHTML = '';
     let grandTotal = 0;
     groups.forEach((group, idx) => {
-        const isDis = group.querySelector('[name$="-dis_tedarik_ekipman"]').value === "1";
+        const isDis = isTruthyFlag(group.querySelector('[name$="-dis_tedarik_ekipman"]').value);
         const bas = group.querySelector('[name$="-kiralama_baslangici"]').value;
         const bit = group.querySelector('[name$="-kiralama_bitis"]').value;
         const br_fiyat = parseFloat(group.querySelector('[name$="-kiralama_brm_fiyat"]').value) || 0;
         const nk_fiyat = parseFloat(group.querySelector('[name$="-nakliye_satis_fiyat"]').value) || 0;
+        const donusFaturaEt = group.querySelector('[name$="-donus_nakliye_fatura_et"]').value === '1';
+        // nakliye_satis_fiyat zaten toplam değeri saklar (giş-dönüş seçiliyse 2x), tekrar çarpmaya gerek yok
+        const nk_toplam = nk_fiyat;
+        const nk_adet = donusFaturaEt ? 2 : 1;
+        const nk_birim = donusFaturaEt ? (nk_fiyat / 2) : nk_fiyat;
         const gun = hesaplaGun(bas, bit);
-        const satirToplam = (gun * br_fiyat) + nk_fiyat;
+        const satirToplam = (gun * br_fiyat) + nk_toplam;
         grandTotal += satirToplam;
         let makine = "";
         if(isDis) {
@@ -438,14 +492,20 @@ function renderTable() {
             const opt = Array.from(g_ekipman.options).find(o => o.value == eid);
             makine = opt ? opt.text : "Seçilmedi";
         }
+        const tedarikciId = group.querySelector('[name$="-harici_ekipman_tedarikci_id"]').value;
+        const tedarikciText = getOptionTextByValue(document.getElementById('g-harici-tedarikci'), tedarikciId);
+        const subeAdi = isDis ? '' : (ekipmanSubeMap[Number(group.querySelector('[name$="-ekipman_id"]').value)] || 'Şube Tanımsız');
+        const turDetay = isDis
+            ? `Dış Tedarik - ${tedarikciId && tedarikciId !== '0' ? tedarikciText : 'Bilinmiyor'}`
+            : `Öz Mal - ${subeAdi}`;
         const tr = document.createElement('tr');
         if (editingIdx === idx) tr.className = 'table-warning';
         tr.innerHTML = `
             <td>${idx + 1}</td>
             <td>${makine}</td>
-            <td><span class="badge ${isDis ? 'bg-danger' : 'bg-primary'}">${isDis ? 'DIŞ' : 'ÖZ MAL'}</span></td>
+            <td><span class="badge ${isDis ? 'bg-danger' : 'bg-primary'}">${turDetay}</span></td>
             <td>${formatTRDate(bas)} / ${formatTRDate(bit)} (${gun} G)</td>
-            <td class="text-end"><strong class="d-block text-dark">${gun} G x ${formatTRCurrency(br_fiyat)} ₺</strong><small class="text-muted">+ ${formatTRCurrency(nk_fiyat)} ₺ Nk</small></td>
+            <td class="text-end"><strong class="d-block text-dark">${gun} G x ${formatTRCurrency(br_fiyat)} ₺</strong><small class="text-muted">+ ${nk_adet}x${formatTRCurrency(nk_birim)} ₺${donusFaturaEt ? ' (Dönüş dahil)' : ' (Tek Yön)'}</small></td>
             <td class="text-end fw-bold text-success">${formatTRCurrency(satirToplam)} ₺</td>
             <td class="text-center">
                 <button type="button" class="btn btn-sm btn-outline-info duzenle-btn" data-idx="${idx}">DÜZENLE</button>
@@ -499,7 +559,10 @@ g_btn_ekle.onclick = function(e) {
     group.querySelector('[name$="-kiralama_bitis"]').value = bit;
     group.querySelector('[name$="-kiralama_brm_fiyat"]').value = val('g-gunluk');
     group.querySelector('[name$="-kiralama_alis_fiyat"]').value = val('g-alis-fiyat');
-    group.querySelector('[name$="-nakliye_satis_fiyat"]').value = val('g-nakliye');
+    const gN = parseFloat(val('g-nakliye')) || 0;
+    const donusFatura = document.getElementById('g-donus-fatura-et').checked;
+    group.querySelector('[name$="-nakliye_satis_fiyat"]').value = donusFatura ? (gN * 2) : gN;
+    group.querySelector('[name$="-donus_nakliye_fatura_et"]').value = donusFatura ? "1" : "0";
     group.querySelector('[name$="-nakliye_alis_fiyat"]').value = val('g-nakliye-alis');
     group.querySelector('[name$="-harici_ekipman_marka"]').value = val('g-harici-marka');
     group.querySelector('[name$="-harici_ekipman_model"]').value = val('g-harici-model');
@@ -532,7 +595,11 @@ tbody.onclick = function(e) {
         setVal('g-bitis', group.querySelector('[name$="-kiralama_bitis"]').value);
         setVal('g-gunluk', group.querySelector('[name$="-kiralama_brm_fiyat"]').value);
         setVal('g-alis-fiyat', group.querySelector('[name$="-kiralama_alis_fiyat"]').value);
-        setVal('g-nakliye', group.querySelector('[name$="-nakliye_satis_fiyat"]').value);
+        const storedNakSatis = parseFloat(group.querySelector('[name$="-nakliye_satis_fiyat"]').value) || 0;
+        const donusFaturaEtVal = group.querySelector('[name$="-donus_nakliye_fatura_et"]').value === '1';
+        // Panelde tek yön fiyatını göster (toplam değil)
+        setVal('g-nakliye', donusFaturaEtVal ? (storedNakSatis / 2).toFixed(2) : storedNakSatis.toFixed(2));
+        document.getElementById('g-donus-fatura-et').checked = donusFaturaEtVal;
         setVal('g-nakliye-alis', group.querySelector('[name$="-nakliye_alis_fiyat"]').value);
         
         setVal('g-harici-seri', group.querySelector('[name$="-harici_ekipman_seri_no"]').value);

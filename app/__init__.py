@@ -108,12 +108,29 @@ def create_app(config_class=Config):
     # 12. fatura yönetimi
     from app.fatura import fatura_bp
     app.register_blueprint(fatura_bp, url_prefix='/fatura')
+
+    # 13. Raporlama Merkezi
+    from app.raporlama import raporlama_bp
+    app.register_blueprint(raporlama_bp, url_prefix='/raporlama')
+
+    # 14. Takvim ve Hatırlatmalar
+    from app.takvim import takvim_bp
+    app.register_blueprint(takvim_bp)
+
+    # 15. DB Yedekleme Menüsü
+    from app.db_menu import db_menu_bp
+    app.register_blueprint(db_menu_bp, url_prefix='/db-menu')
+
+    # 16. Genel Ayarlar
+    from app.ayarlar import ayarlar_bp
+    app.register_blueprint(ayarlar_bp, url_prefix='/ayarlar')
     
     with app.app_context():
         from flask_migrate import upgrade
         upgrade()
 
         from app.auth.models import User
+        from app.ayarlar.models import AppSettings
 
         # İlk kurulumda tablo henüz yoksa sorgu patlamasın
         if inspect(db.engine).has_table('user'):
@@ -126,6 +143,9 @@ def create_app(config_class=Config):
                 yeni_admin.set_password('123456')
                 db.session.add(yeni_admin)
                 db.session.commit()
+
+        if inspect(db.engine).has_table('app_settings'):
+            AppSettings.get_current()
     return app
     
 

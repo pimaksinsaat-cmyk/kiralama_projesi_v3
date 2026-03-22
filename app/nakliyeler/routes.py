@@ -1,13 +1,21 @@
 from flask import render_template, redirect, url_for, flash, request
+from flask_login import current_user
 from app.extensions import db
 from app.nakliyeler import nakliye_bp
 from app.nakliyeler.models import Nakliye
 from app.nakliyeler.forms import NakliyeForm
-from app.services.nakliye_services import CariServis  # Finansal işçimizi çağırıyoruz
+from app.services.nakliye_services import CariServis
+from app.services.operation_log_service import OperationLogService
 from app.firmalar.models import Firma
 from app.araclar.models import Arac
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
+
+def _actor():
+    return current_user.id if current_user.is_authenticated else None
+
+def _uname():
+    return getattr(current_user, 'username', None)
 
 # -------------------------------------------------------------------------
 # YARDIMCI FONKSİYON: Decimal Hata Çözücü
@@ -34,6 +42,11 @@ def to_decimal(value):
 @nakliye_bp.route('/')
 def index():
     # Filtreleme parametrelerini yakala
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    if per_page not in {10, 20, 50, 100}:
+        per_page = 20
+
     baslangic = request.args.get('baslangic')
     bitis = request.args.get('bitis')
     secili_plaka = request.args.get('plaka')
@@ -57,7 +70,10 @@ def index():
     if secili_taseron_id and secili_taseron_id.isdigit():
         query = query.filter(Nakliye.taseron_firma_id == int(secili_taseron_id))
 
-    nakliyeler = query.order_by(Nakliye.tarih.desc()).all()
+    ordered_query = query.order_by(Nakliye.tarih.desc())
+    pagination = ordered_query.paginate(page=page, per_page=per_page, error_out=False)
+    nakliyeler = pagination.items
+    filtered_all = ordered_query.all()
 
     # Dropdown listelerini hazırla
     plakalar = db.session.query(Nakliye.plaka).filter(Nakliye.plaka.isnot(None)).distinct().all()
@@ -66,14 +82,16 @@ def index():
 
     # İstatistikler
     stats = {
-        'sefer_sayisi': len(nakliyeler),
-        'ciro': sum(n.toplam_tutar or 0 for n in nakliyeler),
-        'maliyet': sum(n.taseron_maliyet or 0 for n in nakliyeler),
-        'kar': sum(n.tahmini_kar or 0 for n in nakliyeler)
+        'sefer_sayisi': len(filtered_all),
+        'ciro': sum(n.toplam_tutar or 0 for n in filtered_all),
+        'maliyet': sum(n.taseron_maliyet or 0 for n in filtered_all),
+        'kar': sum(n.tahmini_kar or 0 for n in filtered_all)
     }
 
     return render_template('nakliyeler/index.html', 
                            nakliyeler=nakliyeler, 
+                           pagination=pagination,
+                           per_page=per_page,
                            stats=stats,
                            baslangic=baslangic,
                            bitis=bitis,
@@ -126,11 +144,25 @@ def ekle():
             CariServis.taseron_maliyet_senkronize_et(nakliye)
             
             db.session.commit()
+            OperationLogService.log(
+                module='nakliyeler', action='create',
+                user_id=_actor(), username=_uname(),
+                entity_type='Nakliye', entity_id=nakliye.id,
+                description=f"Nakliye seferi eklendi (#{nakliye.id}).",
+                success=True
+            )
             flash('Nakliye seferi ve bağlı cari kayıtlar başarıyla oluşturuldu.', 'success')
             return redirect(url_for('nakliyeler.index'))
             
         except Exception as e:
             db.session.rollback()
+            OperationLogService.log(
+                module='nakliyeler', action='create',
+                user_id=_actor(), username=_uname(),
+                entity_type='Nakliye',
+                description=f"Nakliye ekleme hatası: {str(e)}",
+                success=False
+            )
             flash(f'Kayıt hatası: {str(e)}', 'danger')
 
     return render_template('nakliyeler/ekle.html', form=form)
@@ -205,11 +237,25 @@ def duzenle(id):
             CariServis.taseron_maliyet_senkronize_et(nakliye)
             
             db.session.commit()
+            OperationLogService.log(
+                module='nakliyeler', action='update',
+                user_id=_actor(), username=_uname(),
+                entity_type='Nakliye', entity_id=nakliye.id,
+                description=f"Nakliye #{nakliye.id} güncellendi.",
+                success=True
+            )
             flash('Kayıt güncellendi.', 'success')
             return redirect(url_for('nakliyeler.index'))
             
         except Exception as e:
             db.session.rollback()
+            OperationLogService.log(
+                module='nakliyeler', action='update',
+                user_id=_actor(), username=_uname(),
+                entity_type='Nakliye', entity_id=id,
+                description=f"Nakliye güncelleme hatası: {str(e)}",
+                success=False
+            )
             flash(f'Hata: {str(e)}', 'danger')
 
     return render_template('nakliyeler/duzenle.html', form=form, nakliye=nakliye)
@@ -229,9 +275,23 @@ def sil(id):
         CariServis.nakliye_cari_temizle(nakliye.id)
         db.session.delete(nakliye)
         db.session.commit()
+        OperationLogService.log(
+            module='nakliyeler', action='delete',
+            user_id=_actor(), username=_uname(),
+            entity_type='Nakliye', entity_id=id,
+            description=f"Nakliye #{id} silindi.",
+            success=True
+        )
         flash('Kayıt silindi.', 'success')
     except Exception as e:
         db.session.rollback()
+        OperationLogService.log(
+            module='nakliyeler', action='delete',
+            user_id=_actor(), username=_uname(),
+            entity_type='Nakliye', entity_id=id,
+            description=f"Nakliye silme hatası: {str(e)}",
+            success=False
+        )
         flash(f'Hata: {str(e)}', 'danger')
         
     return redirect(url_for('nakliyeler.index'))

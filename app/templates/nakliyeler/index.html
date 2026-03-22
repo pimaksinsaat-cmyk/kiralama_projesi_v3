@@ -55,6 +55,7 @@
 <div class="card shadow-sm mb-4 bg-light border-0">
     <div class="card-body p-3">
         <form method="GET" action="{{ url_for('nakliyeler.index') }}" class="row g-3 align-items-end">
+            <input type="hidden" name="per_page" value="{{ per_page }}">
             <div class="col-md-2">
                 <label class="form-label small fw-bold text-muted mb-1">Başlangıç</label>
                 <input type="date" name="baslangic" class="form-control form-control-sm" value="{{ baslangic or '' }}">
@@ -110,7 +111,7 @@
                         <th>Müşteri Firma</th>
                         <th>Güzergah / Açıklama</th>
                         <th>Plaka / Tedarikçi</th>
-                        <th class="text-end">Tutar (KDV Dahil)</th>
+                        <th class="text-end">Tutar (KDV Hariç)</th>
                         <th class="text-center">Durum</th>
                     </tr>
                 </thead>
@@ -193,6 +194,42 @@
             </table>
         </div>
     </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <form method="GET" action="{{ url_for('nakliyeler.index') }}" class="d-flex align-items-center gap-2 mb-0">
+        <input type="hidden" name="baslangic" value="{{ baslangic or '' }}">
+        <input type="hidden" name="bitis" value="{{ bitis or '' }}">
+        <input type="hidden" name="plaka" value="{{ secili_plaka or '' }}">
+        <input type="hidden" name="taseron_id" value="{{ secili_taseron_id or '' }}">
+        <label for="nakliyeler-per-page" class="small text-muted mb-0">Sayfa başına</label>
+        <select id="nakliyeler-per-page" name="per_page" class="form-select form-select-sm" style="max-width:130px;" onchange="this.form.submit()">
+            <option value="10" {{ 'selected' if per_page == 10 else '' }}>10</option>
+            <option value="25" {{ 'selected' if per_page == 25 else '' }}>25</option>
+            <option value="50" {{ 'selected' if per_page == 50 else '' }}>50</option>
+            <option value="100" {{ 'selected' if per_page == 100 else '' }}>100</option>
+        </select>
+    </form>
+
+    {% if pagination %}
+    <ul class="pagination mb-0">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('nakliyeler.index', page=pagination.prev_num, per_page=per_page, baslangic=baslangic, bitis=bitis, plaka=secili_plaka, taseron_id=secili_taseron_id) }}">&laquo;</a>
+        </li>
+        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+            {% if page_num %}
+            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('nakliyeler.index', page=page_num, per_page=per_page, baslangic=baslangic, bitis=bitis, plaka=secili_plaka, taseron_id=secili_taseron_id) }}">{{ page_num }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+            {% endif %}
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('nakliyeler.index', page=pagination.next_num, per_page=per_page, baslangic=baslangic, bitis=bitis, plaka=secili_plaka, taseron_id=secili_taseron_id) }}">&raquo;</a>
+        </li>
+    </ul>
+    {% endif %}
 </div>
 
 <!-- ÖZEL SAĞ TIK MENÜSÜ -->
@@ -324,5 +361,12 @@
     .sag-tik-satir:hover { background-color: rgba(13, 110, 253, 0.05) !important; transition: 0.2s; }
     #customContextMenu { border-radius: 8px; }
     .dropdown-item:hover { background-color: #f8f9fa; }
+
+    /* Sayfalama */
+    .pagination { display: flex; gap: 4px; list-style: none; padding: 0; margin: 0; }
+    .pagination .page-item .page-link { display: inline-block; padding: 6px 12px; border: 1px solid #dee2e6; border-radius: 4px; color: #667eea; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
+    .pagination .page-item.active .page-link { background: #667eea; border-color: #667eea; color: white; }
+    .pagination .page-item.disabled .page-link { color: #adb5bd; pointer-events: none; }
+    .pagination .page-item .page-link:hover { background: #eef2ff; border-color: #a5b4fc; }
 </style>
 {% endblock %}

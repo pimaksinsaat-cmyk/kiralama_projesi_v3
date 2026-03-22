@@ -9,6 +9,7 @@ from app.firmalar.models import Firma
 from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.cari.models import Odeme
 from app.extensions import db
+from app.ayarlar.models import AppSettings
 from app.utils import klasor_adi_temizle
 
 class FirmaService(BaseService):
@@ -100,22 +101,27 @@ class FirmaService(BaseService):
             raise ValidationError(f"Bu firma için zaten bir sözleşme ({firma.sozlesme_no}) mevcut.")
 
         current_year = date.today().year
-        last_firma = cls._get_base_query().filter(Firma.sozlesme_no.like(f"PS-{current_year}-%")).order_by(Firma.sozlesme_no.desc()).first()
+        settings = AppSettings.get_current()
+        start_no = settings.genel_sozlesme_start_no if settings else 1
+        prefix = settings.genel_sozlesme_prefix if settings and settings.genel_sozlesme_prefix else 'PS'
+        last_firma = cls._get_base_query().filter(Firma.sozlesme_no.like(f"{prefix}-{current_year}-%")).order_by(Firma.sozlesme_no.desc()).first()
         
-        next_nr = 1
+        next_nr = start_no
         if last_firma and last_firma.sozlesme_no:
             try:
                 next_nr = int(last_firma.sozlesme_no.split('-')[-1]) + 1
             except ValueError:
                 pass
                 
-        next_ps_no = f"PS-{current_year}-{next_nr:03d}"
+        next_ps_no = f"{prefix}-{current_year}-{next_nr:03d}"
         
         ikinci_parametre = firma.vergi_no if firma.vergi_no else str(firma.id)
         klasor_adi = klasor_adi_temizle(firma.firma_adi, ikinci_parametre)
         
         firma.sozlesme_no = next_ps_no
-        firma.sozlesme_tarihi = date.today()
+        # İlk kez hazırlanırken tarihi set et, sonra değişme
+        if firma.sozlesme_tarihi is None:
+            firma.sozlesme_tarihi = date.today()
         firma.bulut_klasor_adi = klasor_adi
         
         # Fiziksel klasörleri oluştur

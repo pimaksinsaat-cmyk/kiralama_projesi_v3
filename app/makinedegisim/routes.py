@@ -16,6 +16,7 @@ from app.firmalar.models import Firma
 from app.filo.models import Ekipman
 from app.subeler.models import Sube
 from app.araclar.models import Arac
+from app.utils import ensure_active_sube_exists
 
 # --- GÜVENLİK YARDIMCISI ---
 def get_actor_id():
@@ -30,6 +31,12 @@ def get_actor_id():
 
 @makinedegisim_bp.route('/degistir/<int:kalem_id>', methods=['GET', 'POST'])
 def makine_degistir(kalem_id):
+    guard_response = ensure_active_sube_exists(
+        warning_message="Makine değişimi yapmadan önce en az bir aktif şube / depo tanımlamalısınız."
+    )
+    if guard_response:
+        return guard_response
+
     eski_kalem = KiralamaKalemi.query.get_or_404(kalem_id)
 
     if not eski_kalem.is_active:

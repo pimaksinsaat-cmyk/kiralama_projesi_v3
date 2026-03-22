@@ -47,6 +47,7 @@
     /* Arama Barı */
     .search-input { border-radius: 8px 0 0 8px; border: 1px solid #cbd5e1; padding: 10px 15px; }
     .search-btn { border-radius: 0 8px 8px 0; padding: 10px 25px; }
+    .search-clear-btn { border-radius: 0; padding: 10px 14px; border-left: 0; }
 
     /* Durum + Aksiyon Satır İçi */
     .durum-aksiyon { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
@@ -56,6 +57,13 @@
     /* Özel Modal */
     .custom-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1040; justify-content: center; align-items: center; }
     .custom-modal { background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+
+    /* Sayfalama */
+    .pagination { display: flex; gap: 4px; list-style: none; padding: 0; margin: 0; }
+    .pagination .page-item .page-link { display: inline-block; padding: 6px 12px; border: 1px solid #dee2e6; border-radius: 4px; color: #667eea; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
+    .pagination .page-item.active .page-link { background: #667eea; border-color: #667eea; color: white; }
+    .pagination .page-item.disabled .page-link { color: #adb5bd; pointer-events: none; }
+    .pagination .page-item .page-link:hover { background: #eef2ff; border-color: #a5b4fc; }
 
 </style>
 
@@ -78,17 +86,30 @@
                         <li><a class="dropdown-item" href="{{ url_for('filo.harici') }}"><i class="fas fa-external-link-alt me-2"></i>Harici Ekipmanlar</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('filo.bakimda') }}"><i class="fas fa-tools me-2"></i>Bakımdakiler</a></li>
                         <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('filo.excel_disari_aktar') }}"><i class="fas fa-file-excel me-2 text-success"></i>Excel Dışa Aktar</a></li>
+                        <li><a class="dropdown-item" href="#" id="excel-ice-yukle-ac"><i class="fas fa-upload me-2 text-success"></i>Excel'den Yükle</a></li>
+                        <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="{{ url_for('filo.arsiv') }}"><i class="fas fa-archive me-2"></i>Arşivlenmiş Makineler</a></li>
                     </ul>
                 </div>
             </div>
         </div>
 
+        <form id="excel-ice-yukle-form" method="POST" action="{{ url_for('filo.excel_ice_yukle') }}" enctype="multipart/form-data" style="display:none;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="confirm_password" id="excel-confirm-password-hidden">
+            <input type="file" name="excel_file" id="excel-ice-yukle-input" accept=".xlsx">
+        </form>
+
         <form method="GET" action="{{ url_for('filo.index') }}" class="mb-4">
             <div class="input-group shadow-sm" style="max-width: 600px;">
                 <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
                 <input type="text" name="q" class="form-control search-input border-start-0" 
                        placeholder="Makine kodu, marka veya seri no ile ara..." value="{{ q or '' }}">
+                <input type="hidden" name="per_page" value="{{ per_page }}">
+                <button type="button" class="btn btn-outline-secondary search-clear-btn" id="search-clear-btn" title="Sorguyu temizle">
+                    <i class="fas fa-times"></i>
+                </button>
                 <button type="submit" class="btn btn-dark search-btn font-weight-bold">Sorgula</button>
                 <button type="button" class="btn btn-outline-primary ms-2 rounded-3" data-bs-toggle="modal" data-bs-target="#filterModal">
                     <i class="fas fa-filter me-2"></i>Detaylı Filtre
@@ -166,6 +187,9 @@
                                     <button type="button" class="btn btn-link btn-sm text-decoration-none sonlandir-buton ms-2 p-0" 
                                             data-kalem-id="{{ ekipman.aktif_kiralama_bilgisi.id if ekipman.aktif_kiralama_bilgisi else '' }}"
                                             data-baslangic="{{ ekipman.aktif_kiralama_bilgisi.kiralama_baslangici.strftime('%Y-%m-%d') if ekipman.aktif_kiralama_bilgisi and ekipman.aktif_kiralama_bilgisi.kiralama_baslangici else '' }}"
+                                            data-nakliye-satis="{{ ekipman.aktif_kiralama_bilgisi.nakliye_satis_fiyat if ekipman.aktif_kiralama_bilgisi else 0 }}"
+                                            data-donus-nakliye-satis="{{ ekipman.aktif_kiralama_bilgisi.donus_nakliye_satis_fiyat if ekipman.aktif_kiralama_bilgisi and ekipman.aktif_kiralama_bilgisi.donus_nakliye_satis_fiyat is not none else '' }}"
+                                            data-donus-fatura-et="{{ 1 if ekipman.aktif_kiralama_bilgisi and ekipman.aktif_kiralama_bilgisi.donus_nakliye_fatura_et else 0 }}"
                                             data-kod="{{ ekipman.kod }}" title="Kiralamayı Bitir">
                                         <i class="fas fa-sign-in-alt"></i> İade Al
                                     </button>
@@ -197,6 +221,52 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+            <form method="GET" action="{{ url_for('filo.index') }}" class="d-flex align-items-center gap-2 mb-0">
+                <input type="hidden" name="q" value="{{ q or '' }}">
+                <input type="hidden" name="sube_id" value="{{ request.args.get('sube_id', '') }}">
+                <input type="hidden" name="tip" value="{{ request.args.get('tip', '') }}">
+                <input type="hidden" name="marka" value="{{ request.args.get('marka', '') }}">
+                <input type="hidden" name="enerji" value="{{ request.args.get('enerji', '') }}">
+                <input type="hidden" name="ortam" value="{{ request.args.get('ortam', '') }}">
+                <input type="hidden" name="y_min" value="{{ request.args.get('y_min', '') }}">
+                <input type="hidden" name="k_min" value="{{ request.args.get('k_min', '') }}">
+                <input type="hidden" name="agirlik_max" value="{{ request.args.get('agirlik_max', '') }}">
+                <input type="hidden" name="genislik_max" value="{{ request.args.get('genislik_max', '') }}">
+                <input type="hidden" name="uzunluk_max" value="{{ request.args.get('uzunluk_max', '') }}">
+                <input type="hidden" name="ky_max" value="{{ request.args.get('ky_max', '') }}">
+                <label for="per-page-select" class="small text-muted mb-0">Sayfa başına</label>
+                <select id="per-page-select" name="per_page" class="form-select form-select-sm" style="max-width: 130px;" onchange="this.form.submit()">
+                    <option value="10" {{ 'selected' if per_page == 10 else '' }}>10</option>
+                    <option value="25" {{ 'selected' if per_page == 25 else '' }}>25</option>
+                    <option value="50" {{ 'selected' if per_page == 50 else '' }}>50</option>
+                    <option value="100" {{ 'selected' if per_page == 100 else '' }}>100</option>
+                </select>
+            </form>
+
+            {% if pagination %}
+            <ul class="pagination mb-0">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('filo.index', page=pagination.prev_num, per_page=per_page, q=q, sube_id=request.args.get('sube_id'), tip=request.args.get('tip'), marka=request.args.get('marka'), enerji=request.args.get('enerji'), ortam=request.args.get('ortam'), y_min=request.args.get('y_min'), k_min=request.args.get('k_min'), agirlik_max=request.args.get('agirlik_max'), genislik_max=request.args.get('genislik_max'), uzunluk_max=request.args.get('uzunluk_max'), ky_max=request.args.get('ky_max')) }}">&laquo;</a>
+                </li>
+
+                {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                    {% if page_num %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('filo.index', page=page_num, per_page=per_page, q=q, sube_id=request.args.get('sube_id'), tip=request.args.get('tip'), marka=request.args.get('marka'), enerji=request.args.get('enerji'), ortam=request.args.get('ortam'), y_min=request.args.get('y_min'), k_min=request.args.get('k_min'), agirlik_max=request.args.get('agirlik_max'), genislik_max=request.args.get('genislik_max'), uzunluk_max=request.args.get('uzunluk_max'), ky_max=request.args.get('ky_max')) }}">{{ page_num }}</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                    {% endif %}
+                {% endfor %}
+
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('filo.index', page=pagination.next_num, per_page=per_page, q=q, sube_id=request.args.get('sube_id'), tip=request.args.get('tip'), marka=request.args.get('marka'), enerji=request.args.get('enerji'), ortam=request.args.get('ortam'), y_min=request.args.get('y_min'), k_min=request.args.get('k_min'), agirlik_max=request.args.get('agirlik_max'), genislik_max=request.args.get('genislik_max'), uzunluk_max=request.args.get('uzunluk_max'), ky_max=request.args.get('ky_max')) }}">&raquo;</a>
+                </li>
+            </ul>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -349,6 +419,19 @@
                         <input type="number" id="taseronMaliyetInput" name="nakliye_alis_fiyat" class="form-control form-control-sm border-warning mt-2" step="0.01" min="0" placeholder="Nakliye firmasına ödenecek tutar (TL)">
                         <div class="mt-1 text-warning small fw-bold"><i class="fas fa-info-circle me-1"></i>Seçilen firmanın cari hesabına nakliye kaydı düşer.</div>
                     </div>
+
+                    <div class="mt-2">
+                        <label class="form-label small fw-bold text-secondary">Dönüş Nakliye Satış Bedeli (Müşteri):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" id="donusNakliyeSatisInput" name="donus_nakliye_satis_fiyat" class="form-control form-control-sm" step="0.01" min="0" readonly style="background:#f8f9fa; cursor:not-allowed;">
+                            <span class="input-group-text bg-light text-muted" id="donus-lock-icon"><i class="fas fa-lock"></i></span>
+                        </div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="donusFiyatDegistirCheck">
+                            <label class="form-check-label small text-secondary" for="donusFiyatDegistirCheck">Dönüş nakliyesinde farklı fiyat uygula</label>
+                        </div>
+                        <div class="small text-warning fw-bold mt-1 d-none" id="donus-fark-uyari"><i class="fas fa-exclamation-triangle me-1"></i>Planlanan bedelden fark oluşursa müşteri carisine nakliye farkı işlenecektir.</div>
+                    </div>
                 </div>
             </div>
 
@@ -362,6 +445,28 @@
 <form id="delete-form" method="POST" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
+
+<div class="modal fade" id="excel-password-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-shield-alt me-2 text-warning"></i>Güvenlik Doğrulaması</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Excel'den toplu veritabanı kaydı için kullanıcı şifrenizi tekrar girin.</p>
+                <label for="excel-confirm-password" class="form-label fw-semibold">Şifre</label>
+                <input type="password" id="excel-confirm-password" class="form-control" autocomplete="current-password" placeholder="Şifrenizi girin">
+                <div class="form-text">Doğrulama sonrası Excel dosyası seçimi açılacaktır.</div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" id="excel-password-confirm-btn">Devam Et</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <form id="filo-iade-iptal-form" method="POST" action="{{ url_for('kiralama.iptal_et_kalem') }}" style="display:none;">
     <input type="hidden" name="csrf_token" id="filo-iptal-csrf-token">
     <input type="hidden" name="kalem_id" id="filo-iptal-kalem-id">
@@ -369,6 +474,7 @@
 
 <!-- Filtre Modalı Dahil Ediliyor -->
 {% set g_ekipman_id = "g-ekipman-hidden" %}
+{% set filtre_redirect_url = url_for('filo.index') %}
 {% include "kiralama/_filtre_modal.html" %}
 
 <script>
@@ -447,9 +553,9 @@
             const clientX = e.clientX ?? (e.touches?.[0]?.clientX ?? 0);
             const clientY = e.clientY ?? (e.touches?.[0]?.clientY ?? 0);
 
-            // position: fixed kullandığımız için doğrudan clientX/Y yeterli
-            let left = clientX+ window.scrollX;
-            let top = clientY + window.scrollY;
+            // position: fixed kullandığımız için scroll offset eklenmemeli
+            let left = clientX;
+            let top = clientY;
 
             // Sağa taşıyorsa sola kaydır
             if (left + menuWidth + margin > window.innerWidth) {
@@ -524,6 +630,31 @@
                 document.getElementById('taseronFirmaDiv').style.display = 'none';
                 document.getElementById('taseronFirmaSelect').value = '';
                 document.getElementById('taseronMaliyetInput').value = '';
+                const totalNakliye = parseFloat(this.dataset.nakliyeSatis || '0');
+                const kayitliDonus = this.dataset.donusNakliyeSatis;
+                const donusFaturaEt = this.dataset.donusFaturaEt === '1';
+                const defaultDonus = kayitliDonus && kayitliDonus !== ''
+                    ? parseFloat(kayitliDonus)
+                    : (donusFaturaEt ? totalNakliye / 2 : 0);
+                document.getElementById('donusNakliyeSatisInput').value = Number.isFinite(defaultDonus) ? defaultDonus.toFixed(2) : '0.00';
+                // reset fiyat değiştir checkbox
+                const degistirCheck = document.getElementById('donusFiyatDegistirCheck');
+                if (degistirCheck) {
+                    degistirCheck.checked = false;
+                    degistirCheck.dispatchEvent(new Event('change'));
+                }
+                // Checkbox etiketini ve uyarı metnini duruma göre güncelle
+                const degistirLabel = document.querySelector('label[for="donusFiyatDegistirCheck"]');
+                const farkUyari = document.getElementById('donus-fark-uyari');
+                if (degistirLabel && farkUyari) {
+                    if (donusFaturaEt) {
+                        degistirLabel.textContent = 'Dönüş nakliyesinde farklı fiyat uygula';
+                        farkUyari.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Planlanan bedelden fark oluşursa müşteri carisine nakliye farkı işlenecektir.';
+                    } else {
+                        degistirLabel.textContent = 'Dönüş nakliyesi ekle';
+                        farkUyari.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Müşteri carisine dönüş nakliye bedeli olarak işlenecektir.';
+                    }
+                }
                 backdrop.style.display = 'flex';
             });
         });
@@ -541,9 +672,15 @@
         // Form gönderim validasyonu
         document.getElementById('sonlandir-kalem-form').addEventListener('submit', function(e) {
             const subeVal = this.querySelector('[name="donus_sube_id"]').value;
+            const donusSatis = parseFloat(document.getElementById('donusNakliyeSatisInput').value || '0');
             if (!subeVal) {
                 e.preventDefault();
                 alert('Lütfen dönüş şubesi veya teslimat noktasını seçin.');
+                return;
+            }
+            if (donusSatis < 0) {
+                e.preventDefault();
+                alert('Dönüş nakliye satış bedeli negatif olamaz.');
                 return;
             }
             const harici = document.getElementById('hariciNakliyeSonlandir').checked;
@@ -604,6 +741,42 @@
             if (event.key === 'Escape') hideContextMenu();
         });
 
+        // Dönüş fiyatı değiştir checkbox toggle
+        document.getElementById('donusFiyatDegistirCheck').addEventListener('change', function() {
+            const donusInput = document.getElementById('donusNakliyeSatisInput');
+            const lockIcon = document.getElementById('donus-lock-icon');
+            const uyari = document.getElementById('donus-fark-uyari');
+            if (this.checked) {
+                donusInput.readOnly = false;
+                donusInput.style.background = '';
+                donusInput.style.cursor = '';
+                donusInput.classList.add('border-warning');
+                lockIcon.innerHTML = '<i class="fas fa-lock-open"></i>';
+                lockIcon.className = 'input-group-text bg-warning text-white';
+                uyari.classList.remove('d-none');
+                donusInput.focus();
+            } else {
+                donusInput.readOnly = true;
+                donusInput.style.background = '#f8f9fa';
+                donusInput.style.cursor = 'not-allowed';
+                donusInput.classList.remove('border-warning');
+                lockIcon.innerHTML = '<i class="fas fa-lock"></i>';
+                lockIcon.className = 'input-group-text bg-light text-muted';
+                uyari.classList.add('d-none');
+            }
+        });
+
+        // Filo modal açılınca checkbox ve kilidi sıfırla
+        document.querySelectorAll('.js-filo-sonlandir-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const degistirCheck = document.getElementById('donusFiyatDegistirCheck');
+                if (degistirCheck) {
+                    degistirCheck.checked = false;
+                    degistirCheck.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+
         const filterApplyBtn = document.getElementById('f-apply');
         if (filterApplyBtn) {
             const originalOnClick = filterApplyBtn.onclick;
@@ -611,6 +784,68 @@
                 await originalOnClick(e);
                 const params = new URLSearchParams();
             };
+        }
+
+        const excelImportTrigger = document.getElementById('excel-ice-yukle-ac');
+        const excelImportInput = document.getElementById('excel-ice-yukle-input');
+        const excelImportForm = document.getElementById('excel-ice-yukle-form');
+        const excelPasswordModalEl = document.getElementById('excel-password-modal');
+        const excelPasswordInput = document.getElementById('excel-confirm-password');
+        const excelPasswordHidden = document.getElementById('excel-confirm-password-hidden');
+        const excelPasswordConfirmBtn = document.getElementById('excel-password-confirm-btn');
+        const excelPasswordModal = excelPasswordModalEl ? new bootstrap.Modal(excelPasswordModalEl) : null;
+
+        if (
+            excelImportTrigger && excelImportInput && excelImportForm &&
+            excelPasswordModal && excelPasswordInput && excelPasswordHidden && excelPasswordConfirmBtn
+        ) {
+            excelImportTrigger.addEventListener('click', function(e) {
+                e.preventDefault();
+                excelPasswordInput.value = '';
+                excelPasswordHidden.value = '';
+                excelPasswordModal.show();
+            });
+
+            excelPasswordConfirmBtn.addEventListener('click', function() {
+                const pwd = (excelPasswordInput.value || '').trim();
+                if (!pwd) {
+                    excelPasswordInput.focus();
+                    return;
+                }
+                excelPasswordHidden.value = pwd;
+                excelPasswordModal.hide();
+                excelImportInput.click();
+            });
+
+            excelImportInput.addEventListener('change', function() {
+                if (this.files && this.files.length > 0) {
+                    excelImportForm.submit();
+                } else {
+                    excelPasswordHidden.value = '';
+                }
+            });
+
+            excelPasswordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    excelPasswordConfirmBtn.click();
+                }
+            });
+        }
+
+        const searchInput = document.querySelector('input[name="q"]');
+        const searchClearBtn = document.getElementById('search-clear-btn');
+        const searchForm = searchInput ? searchInput.closest('form') : null;
+
+        if (searchInput && searchClearBtn && searchForm) {
+            searchClearBtn.addEventListener('click', function() {
+                if (!searchInput.value) {
+                    searchInput.focus();
+                    return;
+                }
+                searchInput.value = '';
+                searchForm.submit();
+            });
         }
     });
 </script>

@@ -1,10 +1,12 @@
 import traceback
 import threading
 from datetime import datetime, date, timedelta, timezone
-from flask import render_template, redirect, url_for, flash, request, current_app, jsonify
+from io import BytesIO
+from flask import render_template, redirect, url_for, flash, request, current_app, jsonify, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
+from openpyxl import Workbook, load_workbook
 
 from app import db
 from app.kiralama import kiralama_bp
@@ -13,6 +15,7 @@ from app.kiralama import kiralama_bp
 from app.firmalar.models import Firma
 from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.filo.models import Ekipman
+from app.filo.forms import EKIPMAN_TIPI_SECENEKLERI
 from app.subeler.models import Sube
 from app.araclar.models import Arac as NakliyeAraci
 from app.kiralama.forms import KiralamaForm
@@ -20,6 +23,8 @@ from app.kiralama.forms import KiralamaForm
 # Servis Katmanı ve Hata Yönetimi
 from app.services.kiralama_services import KiralamaService, KiralamaKalemiService
 from app.services.base import ValidationError
+from app.services.operation_log_service import OperationLogService
+from app.utils import ensure_active_sube_exists
 
 # --- BELLEK İÇİ ÖNBELLEKLEME (IN-MEMORY CACHE) ---
 _CACHE_DATA = {
@@ -99,9 +104,12 @@ def populate_kiralama_form_choices(form, include_ids=None):
         or_(Ekipman.calisma_durumu == 'bosta', Ekipman.id.in_(include_ids))
     ).order_by(Ekipman.kod).all()
     
-    # KOD | TİP (Yükseklik m - Kapasite kg) formatı uygulandı
+    # KOD | TİP (Marka-Yükseklikm - Kapasitekg) formatı uygulandı
     pimaks_choices = [(0, '--- Seçiniz ---')] + [
-        (e.id, f"{e.kod} | {e.tipi} ({e.calisma_yuksekligi}m - {e.kaldirma_kapasitesi}kg)") 
+        (
+            e.id,
+            f"{(e.kod or '').strip()} | {(e.tipi or '').strip()} ({(e.marka or 'Bilinmiyor').strip()}-{e.calisma_yuksekligi or 0}m - {e.kaldirma_kapasitesi or 0}kg)"
+        )
         for e in filo_query
     ]
 
@@ -126,6 +134,9 @@ def index():
     """Kiralama ana listesi ve arama."""
     try:
         page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        if per_page not in {10, 20, 50, 100}:
+            per_page = 20
         q = request.args.get('q', '', type=str)
         
         query = Kiralama.query.options(
@@ -138,7 +149,7 @@ def index():
             query = query.join(Firma, Kiralama.firma_musteri_id == Firma.id)\
                          .filter(or_(Kiralama.kiralama_form_no.ilike(search), Firma.firma_adi.ilike(search)))
             
-        pagination = query.order_by(Kiralama.id.desc()).paginate(page=page, per_page=20)
+        pagination = query.order_by(Kiralama.id.desc()).paginate(page=page, per_page=per_page)
         # Liste ekranında görünen kiralamalar için bekleyen cari tutarı güncel tut
         try:
             for kiralama in pagination.items:
@@ -164,6 +175,7 @@ def index():
             'kiralama/index.html', 
             kiralamalar=pagination.items, 
             pagination=pagination, 
+            per_page=per_page,
             q=q, 
             kurlar=KiralamaService.get_tcmb_kurlari(),
             today=date.today(),
@@ -175,12 +187,18 @@ def index():
     except Exception as e:
         current_app.logger.error(f"Kiralama Liste Yükleme Hatası: {str(e)}")
         flash(f"Liste yüklenirken bir hata oluştu.", "danger")
-        return render_template('kiralama/index.html', kiralamalar=[], kurlar={}, today=date.today(), subeler=[], nakliye_araclari=[], nakliye_tedarikci_listesi=[], recently_returned_kalem_ids=set())
+        return render_template('kiralama/index.html', kiralamalar=[], pagination=None, per_page=20, q='', kurlar={}, today=date.today(), subeler=[], nakliye_araclari=[], nakliye_tedarikci_listesi=[], recently_returned_kalem_ids=set())
 
 @kiralama_bp.route('/ekle', methods=['GET', 'POST'])
 @login_required
 def ekle():
     """Yeni kiralama kaydı oluşturma."""
+    guard_response = ensure_active_sube_exists(
+        warning_message="Kiralama oluşturmadan önce en az bir aktif şube / depo tanımlamalısınız."
+    )
+    if guard_response:
+        return guard_response
+
     form = KiralamaForm()
     
     try:
@@ -208,6 +226,7 @@ def ekle():
             actor_id = getattr(current_user, 'id', None)
             kiralama_data = {
                 'kiralama_form_no': form.kiralama_form_no.data,
+                'makine_calisma_adresi': form.makine_calisma_adresi.data,
                 'firma_musteri_id': form.firma_musteri_id.data,
                 'kdv_orani': form.kdv_orani.data,
                 'doviz_kuru_usd': form.doviz_kuru_usd.data,
@@ -215,14 +234,42 @@ def ekle():
             }
             kalemler_data = [k_form.data for k_form in form.kalemler]
 
-            KiralamaService.create_kiralama_with_relations(kiralama_data, kalemler_data, actor_id=actor_id)
+            created_kiralama = KiralamaService.create_kiralama_with_relations(kiralama_data, kalemler_data, actor_id=actor_id)
+            OperationLogService.log(
+                module='kiralama',
+                action='create',
+                user_id=actor_id,
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                entity_id=getattr(created_kiralama, 'id', None),
+                description=f"Kiralama oluşturuldu: {created_kiralama.kiralama_form_no}",
+                success=True,
+            )
             flash('Kiralama kaydı başarıyla oluşturuldu.', 'success')
             return redirect(url_for('kiralama.index'))
             
         except ValidationError as e:
+            OperationLogService.log(
+                module='kiralama',
+                action='create',
+                user_id=getattr(current_user, 'id', None),
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                description=f"Kiralama oluşturma doğrulama hatası: {str(e)}",
+                success=False,
+            )
             flash(f"Doğrulama Hatası: {str(e)}", "warning")
         except Exception as e:
             current_app.logger.error(f"Kiralama Kayıt Hatası: {str(e)}")
+            OperationLogService.log(
+                module='kiralama',
+                action='create',
+                user_id=getattr(current_user, 'id', None),
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                description=f"Kiralama oluşturma sistem hatası: {str(e)}",
+                success=False,
+            )
             flash(f"Sistemsel bir hata oluştu. Lütfen tekrar deneyin.", "danger")
     
     elif request.method == 'POST':
@@ -233,17 +280,30 @@ def ekle():
                         flash(f"Satır {idx+1} - {k_field}: {k_msg}", "warning")
             else:
                 flash(f"{field}: {errors}", "warning")
+    ekipman_sube_map = {
+        e.id: (e.sube.isim if e.sube else 'Şube Tanımsız')
+        for e in Ekipman.query.options(joinedload(Ekipman.sube)).all()
+    }
     subeler = Sube.query.all()
     markalar = [m[0] for m in db.session.query(Ekipman.marka).filter(Ekipman.marka.isnot(None)).distinct().all()]
-    tipler = [t[0] for t in db.session.query(Ekipman.tipi).filter(Ekipman.tipi.isnot(None), Ekipman.tipi != '').distinct().all()]
-    return render_template('kiralama/ekle.html', form=form,subeler=subeler, markalar=markalar, tipler=tipler, is_edit=False)
+    tipler = [tip for tip, _ in EKIPMAN_TIPI_SECENEKLERI]
+    return render_template('kiralama/ekle.html', form=form,subeler=subeler, markalar=markalar, tipler=tipler, is_edit=False, ekipman_sube_map=ekipman_sube_map)
 
 @kiralama_bp.route('/duzenle/<int:kiralama_id>', methods=['GET', 'POST'])
 @login_required
 def duzenle(kiralama_id):
     """Mevcut bir kiralama kaydını düzenleme."""
+    guard_response = ensure_active_sube_exists(
+        warning_message="Kiralama düzenlemeden önce en az bir aktif şube / depo tanımlamalısınız."
+    )
+    if guard_response:
+        return guard_response
+
     kiralama = db.get_or_404(Kiralama, kiralama_id)
     form = KiralamaForm(obj=kiralama)
+
+    if request.method == 'GET':
+        form.makine_calisma_adresi.data = kiralama.makine_calisma_adresi
     
     try:
         include_ids = [k.ekipman_id for k in kiralama.kalemler if k.ekipman_id]
@@ -253,10 +313,21 @@ def duzenle(kiralama_id):
         flash("Form seçenekleri yüklenirken hata oluştu.", "danger")
         return redirect(url_for('kiralama.index'))
 
+    if request.method == 'GET':
+        # Model ve form alan adları birebir eşleşmeyen kalem alanlarını düzenleme ekranı için senkronize et.
+        for entry, kalem in zip(form.kalemler.entries, kiralama.kalemler):
+            k_form = entry.form
+            k_form.dis_tedarik_ekipman.data = 1 if getattr(kalem, 'is_dis_tedarik_ekipman', False) else 0
+            k_form.dis_tedarik_nakliye.data = 1 if getattr(kalem, 'is_harici_nakliye', False) else 0
+            k_form.harici_ekipman_kaldirma_kapasitesi.data = getattr(kalem, 'harici_ekipman_kapasite', None)
+            k_form.harici_ekipman_calisma_yuksekligi.data = getattr(kalem, 'harici_ekipman_yukseklik', None)
+            k_form.harici_ekipman_uretim_tarihi.data = getattr(kalem, 'harici_ekipman_uretim_yili', None)
+
     if form.validate_on_submit():
         try:
             actor_id = getattr(current_user, 'id', None)
             kiralama_data = {
+                'makine_calisma_adresi': form.makine_calisma_adresi.data,
                 'firma_musteri_id': form.firma_musteri_id.data,
                 'kdv_orani': form.kdv_orani.data,
                 'doviz_kuru_usd': form.doviz_kuru_usd.data,
@@ -265,17 +336,51 @@ def duzenle(kiralama_id):
             kalemler_data = [k_form.data for k_form in form.kalemler]
 
             KiralamaService.update_kiralama_with_relations(kiralama.id, kiralama_data, kalemler_data, actor_id=actor_id)
+            OperationLogService.log(
+                module='kiralama',
+                action='update',
+                user_id=actor_id,
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                entity_id=kiralama.id,
+                description=f"Kiralama güncellendi: {kiralama.kiralama_form_no}",
+                success=True,
+            )
             flash('Kiralama başarıyla güncellendi.', 'success')
             return redirect(url_for('kiralama.index'))
         except ValidationError as e:
+            OperationLogService.log(
+                module='kiralama',
+                action='update',
+                user_id=getattr(current_user, 'id', None),
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                entity_id=kiralama_id,
+                description=f"Kiralama güncelleme doğrulama hatası: {str(e)}",
+                success=False,
+            )
             flash(f"Hata: {str(e)}", "warning")
         except Exception as e:
             current_app.logger.error(f"Kiralama Güncelleme Hatası (ID: {kiralama_id}): {str(e)}")
+            OperationLogService.log(
+                module='kiralama',
+                action='update',
+                user_id=getattr(current_user, 'id', None),
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                entity_id=kiralama_id,
+                description=f"Kiralama güncelleme sistem hatası: {str(e)}",
+                success=False,
+            )
             flash(f"Güncelleme sırasında sistemsel bir hata oluştu.", "danger")
+    ekipman_sube_map = {
+        e.id: (e.sube.isim if e.sube else 'Şube Tanımsız')
+        for e in Ekipman.query.options(joinedload(Ekipman.sube)).all()
+    }
     subeler = Sube.query.all()
     markalar = [m[0] for m in db.session.query(Ekipman.marka).filter(Ekipman.marka.isnot(None)).distinct().all()]
-    tipler = [t[0] for t in db.session.query(Ekipman.tipi).filter(Ekipman.tipi.isnot(None), Ekipman.tipi != '').distinct().all()]
-    return render_template('kiralama/duzelt.html', form=form, kiralama=kiralama,markalar=markalar, subeler=subeler, tipler=tipler, is_edit=True)
+    tipler = [tip for tip, _ in EKIPMAN_TIPI_SECENEKLERI]
+    return render_template('kiralama/duzelt.html', form=form, kiralama=kiralama,markalar=markalar, subeler=subeler, tipler=tipler, is_edit=True, ekipman_sube_map=ekipman_sube_map)
 
 @kiralama_bp.route('/sil/<int:kiralama_id>', methods=['POST'])
 @login_required
@@ -284,11 +389,41 @@ def sil(kiralama_id):
     try:
         actor_id = getattr(current_user, 'id', None)
         KiralamaService.delete_with_relations(kiralama_id, actor_id=actor_id)
+        OperationLogService.log(
+            module='kiralama',
+            action='delete',
+            user_id=actor_id,
+            username=getattr(current_user, 'username', None),
+            entity_type='Kiralama',
+            entity_id=kiralama_id,
+            description=f"Kiralama silindi (soft/hard): ID={kiralama_id}",
+            success=True,
+        )
         flash('Kiralama kaydı ve bağlı tüm hareketler silindi.', 'success')
     except ValidationError as e:
+        OperationLogService.log(
+            module='kiralama',
+            action='delete',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='Kiralama',
+            entity_id=kiralama_id,
+            description=f"Kiralama silme doğrulama hatası: {str(e)}",
+            success=False,
+        )
         flash(str(e), "warning")
     except Exception as e:
         current_app.logger.error(f"Kiralama Silme Hatası (ID: {kiralama_id}): {str(e)}")
+        OperationLogService.log(
+            module='kiralama',
+            action='delete',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='Kiralama',
+            entity_id=kiralama_id,
+            description=f"Kiralama silme sistem hatası: {str(e)}",
+            success=False,
+        )
         flash(f'Silme işlemi başarısız oldu.', 'danger')
     return redirect(url_for('kiralama.index'))
 
@@ -309,6 +444,7 @@ def sonlandir_kalem():
         nakliye_tedarikci_id = request.form.get('nakliye_tedarikci_id', type=int)
         nakliye_araci_id = request.form.get('nakliye_araci_id', type=int)
         nakliye_alis_fiyat = request.form.get('nakliye_alis_fiyat')
+        donus_nakliye_satis_fiyat = request.form.get('donus_nakliye_satis_fiyat')
         
         KiralamaKalemiService.sonlandir(
             kalem_id,
@@ -319,12 +455,43 @@ def sonlandir_kalem():
             nakliye_tedarikci_id=nakliye_tedarikci_id,
             nakliye_araci_id=nakliye_araci_id,
             nakliye_alis_fiyat=nakliye_alis_fiyat,
+            donus_nakliye_satis_fiyat=donus_nakliye_satis_fiyat,
+        )
+        OperationLogService.log(
+            module='kiralama',
+            action='sonlandir_kalem',
+            user_id=actor_id,
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=kalem_id,
+            description=f"Kiralama kalemi sonlandırıldı: kalem_id={kalem_id}",
+            success=True,
         )
         flash("Kiralama başarıyla sonlandırıldı.", "success")
     except ValidationError as e:
+        OperationLogService.log(
+            module='kiralama',
+            action='sonlandir_kalem',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=request.form.get('kalem_id', type=int),
+            description=f"Kalem sonlandırma doğrulama hatası: {str(e)}",
+            success=False,
+        )
         flash(f"Hata: {str(e)}", "warning")
     except Exception as e:
         current_app.logger.error(f"Kalem Sonlandırma Hatası: {str(e)}")
+        OperationLogService.log(
+            module='kiralama',
+            action='sonlandir_kalem',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=request.form.get('kalem_id', type=int),
+            description=f"Kalem sonlandırma sistem hatası: {str(e)}",
+            success=False,
+        )
         flash(f"İşlem sırasında bir hata oluştu.", "danger")
     return redirect(url_for('kiralama.index'))
 
@@ -340,11 +507,41 @@ def iptal_et_kalem():
 
         actor_id = getattr(current_user, 'id', None)
         KiralamaKalemiService.iptal_et_sonlandirma(kalem_id, actor_id=actor_id)
+        OperationLogService.log(
+            module='kiralama',
+            action='iptal_sonlandirma',
+            user_id=actor_id,
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=kalem_id,
+            description=f"Kalem sonlandırma iptal edildi: kalem_id={kalem_id}",
+            success=True,
+        )
         flash("İşlem başarıyla geri alındı.", "success")
     except ValidationError as e:
+        OperationLogService.log(
+            module='kiralama',
+            action='iptal_sonlandirma',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=request.form.get('kalem_id', type=int),
+            description=f"Kalem sonlandırma iptal doğrulama hatası: {str(e)}",
+            success=False,
+        )
         flash(f"Hata: {str(e)}", "warning")
     except Exception as e:
         current_app.logger.error(f"Sonlandırma İptal Hatası: {str(e)}")
+        OperationLogService.log(
+            module='kiralama',
+            action='iptal_sonlandirma',
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            entity_type='KiralamaKalemi',
+            entity_id=request.form.get('kalem_id', type=int),
+            description=f"Kalem sonlandırma iptal sistem hatası: {str(e)}",
+            success=False,
+        )
         flash(f"İşlem geri alınamadı.", "danger")
     return redirect(url_for('kiralama.index'))
 @kiralama_bp.route('/api/ekipman-filtrele')
@@ -366,6 +563,7 @@ def api_ekipman_filtrele():
         
         agirlik_max = request.args.get('agirlik_max', type=float)
         genislik_max = request.args.get('genislik_max', type=float)
+        uzunluk_max = request.args.get('uzunluk_max', type=float)
         ky_max = request.args.get('ky_max', type=float)
         
         # Sorguları uygula
@@ -380,6 +578,7 @@ def api_ekipman_filtrele():
         if k_min: query = query.filter(Ekipman.kaldirma_kapasitesi >= k_min)
         if agirlik_max: query = query.filter(Ekipman.agirlik <= agirlik_max)
         if genislik_max: query = query.filter(Ekipman.genislik <= genislik_max)
+        if uzunluk_max: query = query.filter(Ekipman.uzunluk <= uzunluk_max)
         if ky_max: query = query.filter(Ekipman.kapali_yukseklik <= ky_max)
         
         ekipmanlar = query.order_by(Ekipman.kod).all()
@@ -402,4 +601,142 @@ def api_ekipman_filtrele():
     except Exception as e:
         # Gerçek hatayı ekrana basması için 'error' anahtarı eklendi
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== EXCEL EXPORT/IMPORT ====================
+
+@kiralama_bp.route('/excel-disari-aktar', methods=['GET'])
+@login_required
+def excel_disari_aktar():
+    """Tüm kiralama kaydını Excel'e aktar."""
+    try:
+        kiralamalar = Kiralama.query.filter(Kiralama.is_active == True).options(
+            joinedload(Kiralama.firma_musteri),
+            joinedload(Kiralama.kalemler)
+        ).all()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Kiralamalar'
+
+        headers = [
+            'Form No', 'Müşteri', 'Başlangıç Tarihi', 'Bitiş Tarihi', 
+            'Birim Fiyat', 'Satış Fiyat', 'KDV Oranı (%)', 'Makine Kodu',
+            'Makine Tipi', 'Makine Marka', 'Dış Tedarik Mi', 'Sonlanmış mı'
+        ]
+        ws.append(headers)
+
+        for kiralama in kiralamalar:
+            for kalem in kiralama.kalemler:
+                makine_kodu = kalem.ekipman.kod if kalem.ekipman else (kalem.harici_ekipman_tipi or '')
+                makine_tipi = kalem.ekipman.tipi if kalem.ekipman else (kalem.harici_ekipman_tipi or '')
+                makine_marka = kalem.ekipman.marka if kalem.ekipman else (kalem.harici_ekipman_marka or '')
+                
+                ws.append([
+                    kiralama.kiralama_form_no,
+                    kiralama.firma_musteri.firma_adi if kiralama.firma_musteri else '',
+                    kalem.kiralama_baslangici,
+                    kalem.kiralama_bitis,
+                    float(kalem.kiralama_brm_fiyat or 0),
+                    float(kalem.kiralama_alis_fiyat or 0),
+                    kiralama.kdv_orani,
+                    makine_kodu,
+                    makine_tipi,
+                    makine_marka,
+                    'Evet' if kalem.is_dis_tedarik_ekipman else 'Hayir',
+                    'Evet' if kalem.sonlandirildi else 'Hayir',
+                ])
+
+        stream = BytesIO()
+        wb.save(stream)
+        stream.seek(0)
+
+        filename = f"kiralamalar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            stream,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+    except Exception as e:
+        flash(f'Excel dışa aktarım başarısız: {e}', 'danger')
+        return redirect(url_for('kiralama.index'))
+
+
+@kiralama_bp.route('/excel-ice-yukle', methods=['POST'])
+@login_required
+def excel_ice_yukle():
+    """Excel'den kiralama kaydını yükle (güncelle)."""
+    confirm_password = (
+        request.form.get('confirm_password')
+        or request.form.get('password')
+        or request.form.get('sifre')
+        or ''
+    ).strip()
+    if not (
+        getattr(current_user, 'is_authenticated', False)
+        and hasattr(current_user, 'check_password')
+        and current_user.check_password(confirm_password)
+    ):
+        flash('Excel içe aktarım için kullanıcı şifrenizi doğru girmeniz gerekiyor.', 'danger')
+        return redirect(url_for('kiralama.index'))
+
+    file = request.files.get('excel_file')
+    if not file or not file.filename:
+        flash('Lütfen bir Excel dosyası seçiniz.', 'warning')
+        return redirect(url_for('kiralama.index'))
+
+    if not file.filename.lower().endswith('.xlsx'):
+        flash('Sadece .xlsx uzantılı dosyalar destekleniyor.', 'danger')
+        return redirect(url_for('kiralama.index'))
+
+    try:
+        wb = load_workbook(file, data_only=True)
+        ws = wb.active
+    except Exception as exc:
+        flash(f'Excel dosyası okunamadı: {exc}', 'danger')
+        return redirect(url_for('kiralama.index'))
+
+    updated = 0
+    skipped = 0
+    errors = []
+
+    rows = ws.iter_rows(min_row=2, values_only=True)
+    for row_idx, row in enumerate(rows, start=2):
+        try:
+            form_no = (row[0] or '').strip() if row[0] else ''
+            
+            if not form_no:
+                skipped += 1
+                continue
+
+            mevcut_kiralama = Kiralama.query.filter_by(kiralama_form_no=form_no).first()
+            if not mevcut_kiralama:
+                errors.append(f'Satır {row_idx}: Form No {form_no} bulunamadı.')
+                continue
+
+            # KDV Oranı güncelle
+            try:
+                mevcut_kiralama.kdv_orani = int(row[6]) if row[6] else 20
+            except (ValueError, TypeError):
+                mevcut_kiralama.kdv_orani = 20
+
+            updated += 1
+
+        except Exception as exc:
+            errors.append(f'Satır {row_idx}: {exc}')
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'Excel içe aktarma başarısız: {exc}', 'danger')
+        return redirect(url_for('kiralama.index'))
+
+    message = f'Excel içe aktarım tamamlandı. Güncellenen: {updated}, Atlanan: {skipped}.'
+    if errors:
+        message += f' Hatalar: {", ".join(errors[:5])}'
+    
+    flash(message, 'success' if not errors else 'warning')
+    return redirect(url_for('kiralama.index'))
 

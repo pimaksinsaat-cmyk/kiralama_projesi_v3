@@ -7,11 +7,14 @@
     <div class="row">
         <div class="col-md-8 offset-md-2">
             <div class="card shadow border-0">
-                <div class="card-header bg-success text-white d-flex align-items-center">
-                    <h4 class="mb-0"><i class="fas fa-truck-pickup me-2"></i> Yeni Nakliye Aracı Tanımla</h4>
+                <div class="card-header {{ 'bg-warning text-dark' if arac else 'bg-success text-white' }} d-flex align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-{{ 'edit' if arac else 'truck-pickup' }} me-2"></i>
+                        {{ arac.plaka + ' - Düzenle' if arac else 'Yeni Nakliye Aracı Tanımla' }}
+                    </h4>
                 </div>
                 <div class="card-body p-4">
-                    <form method="POST">
+                    <form method="POST" action="{{ url_for('araclar.duzenle', arac_id=arac.id) if arac else url_for('araclar.ekle') }}">
                         {{ form.hidden_tag() }}
 
                         <div class="row mb-3">
@@ -31,6 +34,11 @@
                         <div class="mb-3">
                             <label class="form-label fw-bold">Marka / Model</label>
                             {{ form.marka_model(class="form-control", placeholder="Örn: Mercedes Axor 1840") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Bağlı Şube</label>
+                            {{ form.sube_id(class="form-select") }}
                         </div>
 
                         <hr class="my-4">
@@ -55,7 +63,7 @@
                         </div>
 
                         <div class="d-grid gap-2">
-                            {{ form.submit(class="btn btn-success btn-lg shadow-sm") }}
+                            {{ form.submit(class="btn btn-" + ('warning' if arac else 'success') + " btn-lg shadow-sm") }}
                             <a href="{{ url_for('araclar.index') }}" class="btn btn-outline-secondary">
                                 <i class="fas fa-times"></i> Vazgeç
                             </a>

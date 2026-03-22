@@ -17,8 +17,8 @@ class Ekipman(BaseModel):
     
     # --- YENİ EKLENEN TEKNİK VE FİLTRE ALANLARI ---
     agirlik = db.Column(db.Float, nullable=True) # Makine ağırlığı (kg)
-    ic_mekan_uygun = db.Column(db.Boolean, default=False, nullable=False) # İz yapmayan lastik vs.
-    enerji_kaynagi = db.Column(db.String(50), nullable=True) # Akülü, Dizel, Hibrit
+    ic_mekan_uygun = db.Column(db.Boolean, default=False, nullable=False)
+    arazi_tipi_uygun = db.Column(db.Boolean, default=False, nullable=False)
     genislik = db.Column(db.Float, nullable=True) # Maksimum genişlik (metre)
     uzunluk = db.Column(db.Float, nullable=True) # Maksimum uzunluk (metre)
     kapali_yukseklik = db.Column(db.Float, nullable=True) # Kapı/tavan geçişleri için kapalı yükseklik (metre)

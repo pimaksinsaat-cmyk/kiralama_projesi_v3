@@ -1,7 +1,35 @@
 from wtforms.validators import ValidationError
 import re
+from functools import wraps
+from flask import flash, redirect, url_for, abort
+from flask_login import current_user
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_admin():
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
 # Ortak hata mesajı değişkeni
 secim_hata_mesaji = "Lütfen geçerli bir seçim yapınız."
+
+
+def ensure_active_sube_exists(redirect_endpoint='subeler.index', warning_message=None):
+    """Aktif şube/depo yoksa kullanıcıyı uyarıp ilgili sayfaya yönlendirir."""
+    from app.subeler.models import Sube
+
+    aktif_sube_var = Sube.query.filter_by(is_active=True).first() is not None
+    if aktif_sube_var:
+        return None
+
+    flash(
+        warning_message or "Bu işlem için önce en az bir aktif şube / depo tanımlamalısınız.",
+        'warning'
+    )
+    return redirect(url_for(redirect_endpoint))
 
 # Para Birimi Doğrulayıcı Fonksiyonu
 def validate_currency(form, field):

@@ -33,6 +33,51 @@
             margin-right: 10px;
             object-fit: contain;
         }
+        .nav-report-btn {
+            border: none;
+            border-radius: 0;
+            color: #0d6efd !important;
+            font-weight: 600;
+            padding: 0.4rem 0.9rem !important;
+            transition: all 0.2s ease;
+            background: transparent;
+            box-shadow: none;
+        }
+        .nav-report-btn:hover,
+        .nav-report-btn:focus {
+            color: #0a58ca !important;
+            background: transparent;
+            transform: none;
+            box-shadow: none;
+            text-decoration: underline;
+        }
+        .nav-calendar-btn {
+            color: #dc3545 !important;
+        }
+        .nav-calendar-btn:hover,
+        .nav-calendar-btn:focus {
+            color: #b02a37 !important;
+            text-decoration: underline;
+        }
+        .nav-db-btn {
+            border: none !important;
+            background: transparent !important;
+            color: #198754 !important;
+            font-weight: 600;
+            padding: 0.4rem 0.9rem !important;
+            box-shadow: none !important;
+        }
+        .nav-db-btn:hover,
+        .nav-db-btn:focus {
+            color: #146c43 !important;
+            text-decoration: underline;
+        }
+        @media (max-width: 991.98px) {
+            .nav-report-btn {
+                display: inline-block;
+                margin: 0.35rem 0;
+            }
+        }
         .main-content {
             flex: 1;
             padding-bottom: 40px;
@@ -56,8 +101,8 @@
     <nav class="navbar navbar-expand-lg navbar-light mb-4 shadow-sm bg-white">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('main.index') }}">
-                <img src="{{ url_for('static', filename='img/logo.JPG') }}"
-                     alt="Pimaks Logo"
+                <img src="{{ url_for('static', filename=(system_settings.logo_path if system_settings and system_settings.logo_path else 'img/logo.JPG')) }}"
+                     alt="{{ system_settings.company_name if system_settings and system_settings.company_name else 'Pimaks Logo' }}"
                      class="navbar-logo"
                      onerror="this.onerror=null; this.src='/static/img/placeholder.png';">
             </a>
@@ -105,8 +150,6 @@
                         </a>
                     </li>
 
-                    <li class="nav-item d-none d-lg-block mx-2 border-end border-secondary-subtle"></li>
-
                     <!-- Finans Dropdown -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="finansDropdown" role="button" data-bs-toggle="dropdown">
@@ -125,8 +168,34 @@
                         </ul>
                     </li>
 
+                    <li class="nav-item d-none d-lg-block mx-2 border-end border-secondary-subtle"></li>
+
+                    <li class="nav-item">
+                        <a class="nav-link nav-report-btn nav-calendar-btn" href="{{ url_for('takvim.takvim') }}">
+                            <i class="fas fa-calendar-alt me-1"></i> Takvim
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link nav-report-btn" href="{{ url_for('raporlama.index') }}">
+                            <i class="fas fa-chart-line me-1"></i> Raporlama
+                        </a>
+                    </li>
+
                     <!-- Kullanıcı Dropdown -->
                     {% if current_user.is_authenticated %}
+                    {% if current_user.is_admin() %}
+                    <li class="nav-item me-2">
+                        <button
+                            type="button"
+                            class="btn btn-sm mt-1 nav-db-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#dbBackupModal"
+                        >
+                            <i class="fas fa-database me-1"></i> DB Yedek
+                        </button>
+                    </li>
+                    {% endif %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="fas fa-user-circle"></i>
@@ -140,6 +209,11 @@
                             <li>
                                 <a class="dropdown-item" href="{{ url_for('auth.kullanici_listesi') }}">
                                     <i class="fas fa-users-cog me-1"></i> Kullanıcı Yönetimi
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('ayarlar.index') }}">
+                                    <i class="fas fa-sliders-h me-1"></i> Genel Ayarlar
                                 </a>
                             </li>
                             <li><hr class="dropdown-divider"></li>
@@ -172,6 +246,8 @@
 
         {% block content %}{% endblock %}
     </div>
+
+    {% include 'db_menu/_modal.html' %}
 
     <footer>
         <div class="container">

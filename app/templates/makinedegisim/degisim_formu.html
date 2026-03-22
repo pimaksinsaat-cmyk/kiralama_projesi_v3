@@ -189,10 +189,15 @@
 <!-- Filtre Modalı -->
 {% include 'kiralama/_filtre_modal.html' %}
 
+<script id="filtre-ipuclari-json" type="application/json">
+{{ (filtre_ipuclari or {})|tojson|safe }}
+</script>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // --- 1. OTOMATİK VERİ DOLDURMA (UX) ---
-    const ipuclari = {{ filtre_ipuclari|tojson|safe if filtre_ipuclari else "{}" }};
+    const ipuclariEl = document.getElementById('filtre-ipuclari-json');
+    const ipuclari = ipuclariEl ? JSON.parse(ipuclariEl.textContent || '{}') : {};
     
     // Ana formdaki iade şubesi seçimi
     const donusSubeSelect = document.getElementById('donus_sube_id');
@@ -214,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'f-genislik': ipuclari.genislik,
                 'f-uzunluk': ipuclari.uzunluk,
                 'f-ky-max': ipuclari.kapali_yukseklik,
-                'f-enerji': ipuclari.enerji_kaynagi
+                'f-enerji': ipuclari.yakit
             };
 
             for (const [id, value] of Object.entries(mappings)) {

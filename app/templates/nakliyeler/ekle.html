@@ -78,12 +78,14 @@
                                 {{ form.tutar(class="form-control border-success", id="tutar_input", placeholder="0.00") }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">KDV (%)</label>
+                                <label class="form-label fw-bold">KDV Oranı (%) <small class="text-muted fw-normal">— Fatura kesilirken uygulanır</small></label>
                                 {{ form.kdv_orani(class="form-control", id="kdv_input") }}
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">Toplam (KDV Dahil)</label>
-                                <input type="text" class="form-control bg-light fw-bold" id="toplam_tutar_label" readonly value="0.00 TL">
+                                <label class="form-label fw-bold text-muted">Bilgi</label>
+                                <div class="form-control bg-light text-muted small d-flex align-items-center" style="height:38px;">
+                                    <i class="fas fa-info-circle me-1"></i> KDV fatura aşamasında hesaplanır
+                                </div>
                             </div>
                         </div>
 
@@ -132,15 +134,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const kdvInput = document.getElementById('kdv_input');
     const toplamLabel = document.getElementById('toplam_tutar_label');
 
-    function calculateTotal() {
-        let matrah = parseFloat(tutarInput.value) || 0;
-        let kdv = parseInt(kdvInput.value) || 0;
-        let toplam = matrah + (matrah * kdv / 100);
-        toplamLabel.value = toplam.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) + " TL";
-    }
-
-    tutarInput.addEventListener('input', calculateTotal);
-    kdvInput.addEventListener('change', calculateTotal);
+    // KDV hesaplaması fatura aşamasında yapılacağından canlı hesaplama kaldırıldı.
+    tutarInput.addEventListener('input', function() {});
 });
 </script>
 {% endblock %}

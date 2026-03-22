@@ -7,10 +7,68 @@ import re
 from datetime import date
 from flask import send_file, flash, redirect, url_for, current_app
 from docxtpl import DocxTemplate
+from .pdf_utils import convert_docx_to_pdf
 
 # Loglama yapılandırması
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def post_process_kiralama_docx(docx_path, vergi_no, sozlesme_tarihi_str, kalemler_listesi, makine_kullanim_yeri):
+    """
+    Üretilen Word dosyasında metin düzeyinde güvenli düzeltmeler yapar.
+    """
+    try:
+        from docx import Document
+
+        docx_doc = Document(docx_path)
+
+        def iter_paragraphs(document):
+            for p in document.paragraphs:
+                yield p
+            for table in document.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for p in cell.paragraphs:
+                            yield p
+
+        for paragraph in iter_paragraphs(docx_doc):
+            text = paragraph.text or ""
+            if not text:
+                continue
+
+            if 'VERGİ KİMLİK NO' in text.upper() and vergi_no:
+                updated = re.sub(
+                    r'(VERGİ\s*KİMLİK\s*NO\s*)(X+)',
+                    rf'\1{vergi_no}',
+                    text,
+                    flags=re.IGNORECASE
+                )
+                if updated != text:
+                    paragraph.text = updated
+                    text = updated
+
+            if 'Sözleşme Başlangıç Tarihi' in text and sozlesme_tarihi_str:
+                updated = re.sub(
+                    r'XX\s*\.\s*XX\s*\.\s*20\s*2\s*4',
+                    sozlesme_tarihi_str,
+                    text
+                )
+                if updated != text:
+                    paragraph.text = updated
+
+            if 'MAKİNE KULLANIM YERİ' in text.upper() and makine_kullanim_yeri:
+                updated = re.sub(
+                    r'(MAKİNE\s*KULLANIM\s*YERİ\s*)(.+)$',
+                    rf'\1{makine_kullanim_yeri}',
+                    text,
+                    flags=re.IGNORECASE
+                )
+                if updated != text:
+                    paragraph.text = updated
+
+        docx_doc.save(docx_path)
+    except Exception as e:
+        logger.warning(f"Word post-process atlandı: {str(e)}")
 
 # Modellerin gerçek konumlarını içe aktarıyoruz
 try:
@@ -49,45 +107,9 @@ def safe_filename(name):
 
 def pdf_donustur(docx_path, output_dir):
     """
-    İşletim sistemine göre LibreOffice veya docx2pdf kullanarak PDF üretir.
+    Ortak PDF modülünü kullanarak dönüşüm yapar.
     """
-    current_os = platform.system()
-    pdf_path = docx_path.replace(".docx", ".pdf")
-    
-    if current_os == "Windows":
-        try:
-            from docx2pdf import convert
-            pythoncom.CoInitialize()
-            
-            if os.path.exists(pdf_path):
-                try: os.remove(pdf_path)
-                except: pass
-
-            # Tam yolları normalize et ve mutlak yola çevir
-            abs_docx = os.path.abspath(docx_path)
-            abs_pdf = os.path.abspath(pdf_path)
-            
-            convert(abs_docx, abs_pdf)
-            time.sleep(1.5) 
-            return pdf_path if os.path.exists(pdf_path) else None
-        except Exception as e:
-            logger.error(f"Windows PDF Dönüşüm Hatası: {str(e)}")
-            return None
-        finally:
-            try: pythoncom.CoUninitialize()
-            except: pass
-    else:
-        # Linux / Render / Docker (LibreOffice)
-        try:
-            subprocess.run([
-                'soffice', '--headless', '--convert-to', 'pdf',
-                '--outdir', output_dir, docx_path
-            ], check=True, capture_output=True, timeout=60)
-            
-            return pdf_path if os.path.exists(pdf_path) else None
-        except Exception as e:
-            logger.error(f"Linux PDF Dönüşüm Hatası: {str(e)}")
-            return None
+    return convert_docx_to_pdf(docx_path, output_dir, logger=logger, timeout_seconds=60)
 
 @dokumanlar_bp.route('/yazdir/form/<int:rental_id>')
 def kiralama_formu_yazdir(rental_id):
@@ -106,6 +128,7 @@ def kiralama_formu_yazdir(rental_id):
         # --- GENEL SÖZLEŞME KONTROLÜ ---
         gs_no = getattr(musteri, 'sozlesme_no', None)
         gs_trh = getattr(musteri, 'sozlesme_tarihi', None)
+        gs_trh_fmt = gs_trh.strftime('%d.%m.%Y') if gs_trh else "BELİRTİLMEDİ"
         if gs_no is None or str(gs_no).strip() == "":
             flash(f"Müşteri ({musteri.firma_adi}) için tanımlı bir Genel Sözleşme bulunamadı.", "danger")
             return redirect(url_for('kiralama.index'))
@@ -122,23 +145,30 @@ def kiralama_formu_yazdir(rental_id):
             genel_toplam += satir_toplam
             
             if kalem.is_dis_tedarik_ekipman:
-                ekipman_adi = f"{kalem.harici_ekipman_marka} {kalem.harici_ekipman_model}"
+                ekipman_adi = kalem.harici_ekipman_marka or "-"
+                model = kalem.harici_ekipman_model or "-"
                 seri_no = kalem.harici_ekipman_seri_no or "-"
             else:
                 if kalem.ekipman:
-                    ekipman_adi = f"{kalem.ekipman.kod} ({kalem.ekipman.tipi})"
+                    ekipman_adi = kalem.ekipman.marka or "-"
+                    model = kalem.ekipman.model or kalem.ekipman.tipi or "-"
                     seri_no = kalem.ekipman.seri_no or "-"
                 else:
                     ekipman_adi = "Tanımsız Makine"
+                    model = "-"
                     seri_no = "-"
 
             kalemler_listesi.append({
                 'ekipman': ekipman_adi,
+                'model': model,
                 'seri_no': seri_no,
                 'bas_tarih': kalem.kiralama_baslangici.strftime('%d.%m.%Y'),
                 'bit_tarih': kalem.kiralama_bitis.strftime('%d.%m.%Y'),
                 'gun_sayisi': gun,
+                'hizmet_turu': 'MONTAJ',
+                'sure': f"{gun} GÜN",
                 'birim_fiyat': f"{birim_fiyat:,.2f} TL",
+                'tutar': f"{satir_toplam:,.2f} TL",
                 'nakliye': f"{nakliye:,.2f} TL",
                 'satir_toplam': f"{satir_toplam:,.2f} TL"
             })
@@ -167,13 +197,17 @@ def kiralama_formu_yazdir(rental_id):
 
         # 5. Word Şablonunu Doldur
         doc = DocxTemplate(template_path)
+        form_tarihi = kiralama.kiralama_olusturma_tarihi.strftime('%d.%m.%Y') if kiralama.kiralama_olusturma_tarihi else date.today().strftime('%d.%m.%Y')
         context = {
             'form_no': kiralama.kiralama_form_no, # Word belgesi içinde / görünebilir, sorun yok
-            'gunun_tarihi': date.today().strftime('%d.%m.%Y'),
+            'gunun_tarihi': form_tarihi,
             'genel_sozlesme_no': gs_no,
-            'genel_sozlesme_trh': gs_trh if isinstance(gs_trh, str) else gs_trh.strftime('%d.%m.%Y'),
+            'genel_sozlesme_trh': gs_trh_fmt,
+            'makine_kullanim_yeri': kiralama.makine_calisma_adresi or "",
             'musteri_unvan': musteri.firma_adi.upper(),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
+            'musteri_vergi_no': musteri.vergi_no or "",
+            'musteri_vergi_dairesi': musteri.vergi_dairesi or "",
             'musteri_adres': musteri.iletisim_bilgileri or "",
             'musteri_tel': musteri.telefon or "",
             'kalemler': kalemler_listesi,
@@ -185,6 +219,13 @@ def kiralama_formu_yazdir(rental_id):
         # Kaydetme denemesi
         try:
             doc.save(docx_path)
+            post_process_kiralama_docx(
+                docx_path,
+                musteri.vergi_no or "",
+                gs_trh_fmt,
+                kalemler_listesi,
+                kiralama.makine_calisma_adresi or ""
+            )
             logger.info(f"Dosya başarıyla kaydedildi: {docx_path}")
         except Exception as e:
             logger.error(f"Kayıt Hatası: {docx_path} - {str(e)}")
@@ -198,6 +239,7 @@ def kiralama_formu_yazdir(rental_id):
             except: pass
             return send_file(pdf_file, mimetype='application/pdf')
         
+        flash("PDF dönüşümü başarısız olduğu için DOCX gönderildi. Sunucuda docx2pdf veya soffice kurulu değil olabilir.", "warning")
         return send_file(docx_path, as_attachment=False)
 
     except Exception as e:

@@ -117,29 +117,19 @@
     </div>
 
     <div class="detail-card">
-        <h3><i class="fas fa-coins"></i> Fatura & Tutar Bilgileri</h3>
+        <h3><i class="fas fa-coins"></i> Tutar Bilgileri</h3>
         <div class="detail-grid">
-            
-            <div class="detail-item money-item">
-                <strong>Tutar (KDV Hariç)</strong>
-                <span>{{ "{:,.2f}".format(nakliye.tutar) }} TL</span>
+            <div class="detail-item money-item" style="grid-column: span 2;">
+                <strong>Sözleşme Tutarı (KDV Hariç)</strong>
+                <span style="font-size: 1.3em; font-weight: bold;">{{ "{:,.2f}".format(nakliye.tutar) }} TL</span>
             </div>
-
             <div class="detail-item">
-                <strong>KDV Oranı</strong>
+                <strong>KDV Oranı (Fatura Kesilirken Uygulanacak)</strong>
                 <span>% {{ nakliye.kdv_orani }}</span>
             </div>
-
-            <div class="detail-item money-item">
-                <strong>KDV Tutarı</strong>
-                <span>{{ "{:,.2f}".format(kdv_tutari) }} TL</span>
-            </div>
-
-            <div class="detail-item money-total">
-                <strong>GENEL TOPLAM (KDV DAHİL)</strong>
-                <span style="font-size: 1.3em; font-weight: bold;">
-                    {{ "{:,.2f}".format(nakliye.toplam_tutar) }} TL
-                </span>
+            <div class="detail-item">
+                <strong>Taşeron Maliyeti</strong>
+                <span>{{ "{:,.2f}".format(nakliye.taseron_maliyet or 0) }} TL</span>
             </div>
         </div>
     </div>

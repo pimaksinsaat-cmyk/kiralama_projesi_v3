@@ -1,13 +1,15 @@
 # app/auth/routes.py
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app import db
 from app.auth import auth_bp
 from app.auth.models import User
 from app.auth.forms import LoginForm
-from functools import wraps
-from flask import abort
+from app.models.operation_log import OperationLog
+from app.utils import admin_required
+
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -40,20 +42,66 @@ def logout():
     logout_user()
     flash('Başarıyla çıkış yapıldı.', 'info')
     return redirect(url_for('auth.login'))
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin():
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated_function
-
 @auth_bp.route('/admin/kullanicilar')
 @login_required
 @admin_required
 def kullanici_listesi():
     kullanicilar = User.query.order_by(User.username).all()
     return render_template('auth/admin.html', kullanicilar=kullanicilar)
+
+
+@auth_bp.route('/admin/kullanici/log/<int:user_id>')
+@login_required
+@admin_required
+def kullanici_loglari(user_id):
+    user = db.get_or_404(User, user_id)
+
+    today = datetime.today().date()
+    week_ago = today - timedelta(days=7)
+
+    start_date = (request.args.get('start_date') or week_ago.strftime('%Y-%m-%d')).strip()
+    end_date = (request.args.get('end_date') or today.strftime('%Y-%m-%d')).strip()
+    sort = (request.args.get('sort') or 'desc').strip().lower()
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    if per_page not in (10, 20, 50, 100):
+        per_page = 50
+
+    query = OperationLog.query.filter(OperationLog.user_id == user_id)
+
+    # Tarih aralığı filtreleri
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(OperationLog.created_at >= start_dt)
+        except ValueError:
+            flash('Başlangıç tarihi formatı hatalı.', 'warning')
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(OperationLog.created_at < end_dt)
+        except ValueError:
+            flash('Bitiş tarihi formatı hatalı.', 'warning')
+
+    if sort == 'asc':
+        query = query.order_by(OperationLog.created_at.asc())
+    else:
+        sort = 'desc'
+        query = query.order_by(OperationLog.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return render_template(
+        'auth/user_logs.html',
+        user=user,
+        logs=pagination.items,
+        pagination=pagination,
+        start_date=start_date,
+        end_date=end_date,
+        sort=sort,
+        per_page=per_page,
+    )
 
 @auth_bp.route('/admin/kullanici/ekle', methods=['POST'])
 @login_required

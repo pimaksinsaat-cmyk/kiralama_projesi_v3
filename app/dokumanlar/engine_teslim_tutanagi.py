@@ -53,6 +53,11 @@ def teslim_tutanagi_uret(kiralama, kalemler_verisi, musteri):
     """
     Word şablonunu doldurur ve PDF'e dönüştürür.
     """
+    # İlk kez yazıdırıldığında tarihi kaydet
+    if kiralama.kiralama_olusturma_tarihi is None:
+        kiralama.kiralama_olusturma_tarihi = date.today()
+        from app import db
+        db.session.commit()
     try:
         base_dir = os.path.abspath(os.getcwd())
         template_path = os.path.join(base_dir, 'app', 'static', 'templates', 'Teslim_Tutanagi_TASLAK.docx')
@@ -68,9 +73,10 @@ def teslim_tutanagi_uret(kiralama, kalemler_verisi, musteri):
             return None, "Şablon bulunamadı."
 
         doc = DocxTemplate(template_path)
+        form_tarihi = kiralama.kiralama_olusturma_tarihi.strftime('%d.%m.%Y') if kiralama.kiralama_olusturma_tarihi else date.today().strftime('%d.%m.%Y')
         context = {
             'form_no': kiralama.kiralama_form_no,
-            'gunun_tarihi': date.today().strftime('%d.%m.%Y'),
+            'gunun_tarihi': form_tarihi,
             'musteri_unvan': musteri.firma_adi.upper(),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_adres': musteri.iletisim_bilgileri or "",

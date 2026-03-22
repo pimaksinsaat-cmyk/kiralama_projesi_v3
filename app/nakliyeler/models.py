@@ -58,11 +58,8 @@ class Nakliye(db.Model):
     )
 
     def hesapla_ve_guncelle(self):
-        """ Matrah ve KDV üzerinden müşteriye kesilecek toplam tutarı hesaplar """
-        if self.tutar:
-            kdv_carpani = Decimal(self.kdv_orani) / Decimal(100)
-            kdv_miktari = self.tutar * kdv_carpani
-            self.toplam_tutar = self.tutar + kdv_miktari
+        """ Sözleşme tutarını kaydeder. KDV fatura kesilirken ayrıca hesaplanacak. """
+        self.toplam_tutar = self.tutar or Decimal('0.00')
         return self.toplam_tutar
 
     @property

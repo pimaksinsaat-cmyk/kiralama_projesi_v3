@@ -2,6 +2,15 @@ from wtforms import FloatField, StringField, SelectField, IntegerField, BooleanF
 from wtforms.validators import DataRequired, Length, Optional
 from app.forms.base_form import BaseForm, MoneyField
 
+EKIPMAN_TIPI_SECENEKLERI = [
+    ('MAKAS', 'Makaslı Platform'),
+    ('EKLEMLI PLATFORM', 'Eklemli Platform'),
+    ('BOOM', 'Bomlu Platform'),
+    ('FORKLIFT', 'Forklift'),
+    ('VINC', 'MobilVinç'),
+    ('DIGER', 'Diğer'),
+]
+
 class EkipmanForm(BaseForm):
     """
     Ekipman (Makine) ekleme ve düzenleme formu.
@@ -12,13 +21,8 @@ class EkipmanForm(BaseForm):
         Length(max=50)
     ])
     
-    tipi = SelectField('Makine Tipi', choices=[
-        ('BOM', 'Bomlu Platform'),
-        ('MAKAS', 'Makaslı Platform'),
-        ('FORKLIFT', 'Forklift'),
-        ('VINC', 'Vinç'),
-        ('DIGER', 'Diğer')
-    ], validators=[DataRequired(message="Lütfen makine tipini seçin.")])
+    tipi = SelectField('Makine Tipi', choices=EKIPMAN_TIPI_SECENEKLERI,
+        validators=[DataRequired(message="Lütfen makine tipini seçin.")], default='MAKAS')
     
     marka = StringField('Marka', validators=[Optional(), Length(max=100)])
     model = StringField('Model', validators=[Optional(), Length(max=100)])
@@ -33,10 +37,11 @@ class EkipmanForm(BaseForm):
         ('Akülü', 'Akülü'),
         ('LPG', 'LPG'),
         ('Hibrit', 'Hibrit')
-    ], validators=[Optional()])
+    ], validators=[Optional()], default='Akülü')
 
     agirlik = FloatField('Makine Ağırlığı (kg)', validators=[Optional()])
-    ic_mekan_uygun = BooleanField('İç Mekan Kullanımına Uygun (İz Yapmayan Lastik)')
+    ic_mekan_uygun = BooleanField('İç Mekan Kullanımına Uygun')
+    arazi_tipi_uygun = BooleanField('Arazi Tipi')
    
     genislik = FloatField('Genişlik (m)', validators=[Optional()])
     uzunluk = FloatField('Uzunluk (m)', validators=[Optional()])
@@ -49,10 +54,6 @@ class EkipmanForm(BaseForm):
         ('TRY', 'TRY'), ('USD', 'USD'), ('EUR', 'EUR'), ('GBP', 'GBP')
     ], default='TRY')
     
-    # --- Satın Alma Sırasındaki Döviz Kurları (Finansal Analiz) ---
-    temin_doviz_kuru_usd = MoneyField('Satın Alma Tarihindeki USD Kuru', validators=[Optional()])
-    temin_doviz_kuru_eur = MoneyField('Satın Alma Tarihindeki EUR Kuru', validators=[Optional()])
-
     # Şubeler rotada (routes.py) dinamik olarak veritabanından doldurulacak
     sube_id = SelectField('Bulunduğu Şube', coerce=int, validators=[
         DataRequired(message="Şube seçimi zorunludur.")

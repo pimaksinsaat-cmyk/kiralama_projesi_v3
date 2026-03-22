@@ -11,11 +11,14 @@ class Kasa(BaseModel):
     kasa_adi = db.Column(db.String(100), nullable=False)
     tipi = db.Column(db.String(20), nullable=False, default='nakit') # nakit, banka, pos
     para_birimi = db.Column(db.String(3), nullable=False, default='TRY')
+    banka_sube_adi = db.Column(db.String(120), nullable=True)
+    sube_id = db.Column(db.Integer, db.ForeignKey('subeler.id'), nullable=True)
     
     # Bakiye (Performans için statik tutulur, Service katmanı tarafından güncellenir)
     bakiye = db.Column(db.Numeric(15, 2), nullable=False, default=0)
     
     # İlişkiler
+    sube = db.relationship('Sube', lazy='joined')
     odemeler = db.relationship('Odeme', back_populates='kasa', lazy='dynamic')
     
     @property

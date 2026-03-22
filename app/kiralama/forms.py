@@ -1,6 +1,6 @@
 from datetime import date
 
-from wtforms import StringField, SubmitField, IntegerField, SelectField, HiddenField, FieldList, FormField
+from wtforms import StringField, SubmitField, IntegerField, SelectField, HiddenField, FieldList, FormField, TextAreaField
 from wtforms.validators import Optional, InputRequired, NumberRange, ValidationError
 from decimal import Decimal
 # Özel Base sınıflarınızı içe aktarıyoruz 
@@ -40,6 +40,7 @@ class KiralamaKalemiForm(BaseForm):
     # --- NAKLİYE ---
     dis_tedarik_nakliye = IntegerField("Harici Nakliye?", default=0)
     nakliye_satis_fiyat = MoneyField('Nakliye Satış Fiyatı', validators=[Optional()], default='0.00')
+    donus_nakliye_fatura_et = IntegerField("Dönüş Nakliyesini de Fatura Et?", default=0)
     nakliye_alis_fiyat = MoneyField('Nakliye Alış Fiyatı', validators=[Optional()], default='0.00')
     nakliye_tedarikci_id = SelectField('Nakliye Tedarikçisi', coerce=int, default=0, validators=[Optional()])
     
@@ -55,6 +56,7 @@ class KiralamaKalemiForm(BaseForm):
 # 2. ANA KİRALAMA FORMU
 class KiralamaForm(BaseForm):
     kiralama_form_no = StringField('Kiralama Form No', validators=[Optional()])
+    makine_calisma_adresi = TextAreaField('Makine Çalışma Adresi', validators=[Optional()])
     
     # Müşteri Seçimi
     firma_musteri_id = SelectField('Müşteri (Firma) Seç', coerce=int, default=0, 

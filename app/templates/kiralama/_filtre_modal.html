@@ -39,7 +39,7 @@
                             <option value="">Tümü</option>
                             {% if tipler %}
                                 {% for tip in tipler %}
-                                <option value="{{ tip }}" {% if makine_data and (makine_data.tip == tip or makine_data.tipi == tip) %}selected{% endif %}>{{ tip }}</option>
+                                <option value="{{ tip }}" {% if request.args.get('tip') == tip or (makine_data and (makine_data.tip == tip or makine_data.tipi == tip)) %}selected{% endif %}>{{ tip }}</option>
                                 {% endfor %}
                             {% else %}
                                 <option value="" disabled>⚠️ Python'dan tipler gelmedi!</option>
@@ -54,7 +54,7 @@
                             <option value="">Tüm Markalar</option>
                             {% if markalar %}
                                 {% for marka in markalar %}
-                                <option value="{{ marka }}" {% if makine_data and makine_data.marka == marka %}selected{% endif %}>{{ marka }}</option>
+                                <option value="{{ marka }}" {% if request.args.get('marka') == marka or (makine_data and makine_data.marka == marka) %}selected{% endif %}>{{ marka }}</option>
                                 {% endfor %}
                             {% else %}
                                 <option value="" disabled>⚠️ Python'dan markalar gelmedi!</option>
@@ -67,15 +67,14 @@
                             <option value="">Hepsi</option>
                             {% if enerji_kaynaklari %}
                                 {% for enerji in enerji_kaynaklari %}
-                                <!-- Modelde hem 'yakit' hem 'enerji_kaynagi' olduğu için ikisini de kontrol ediyoruz -->
-                                <option value="{{ enerji }}" {% if makine_data and (makine_data.enerji_kaynagi == enerji or makine_data.yakit == enerji) %}selected{% endif %}>{{ enerji }}</option>
+                                <option value="{{ enerji }}" {% if request.args.get('enerji') == enerji or (makine_data and makine_data.yakit == enerji) %}selected{% endif %}>{{ enerji }}</option>
                                 {% endfor %}
                             {% else %}
                                 <!-- Python'dan dinamik liste gelmezse varsayılan değerler -->
-                                <option value="Akülü" {% if makine_data and (makine_data.enerji_kaynagi == 'Akülü' or makine_data.yakit == 'Akülü') %}selected{% endif %}>Akülü</option>
-                                <option value="Elektrikli" {% if makine_data and (makine_data.enerji_kaynagi == 'Elektrikli' or makine_data.yakit == 'Elektrikli') %}selected{% endif %}>Elektrikli</option>
-                                <option value="Dizel" {% if makine_data and (makine_data.enerji_kaynagi == 'Dizel' or makine_data.yakit == 'Dizel') %}selected{% endif %}>Dizel</option>
-                                <option value="Hibrit" {% if makine_data and (makine_data.enerji_kaynagi == 'Hibrit' or makine_data.yakit == 'Hibrit') %}selected{% endif %}>Hibrit</option>
+                                <option value="Akülü" {% if request.args.get('enerji') == 'Akülü' or (makine_data and makine_data.yakit == 'Akülü') %}selected{% endif %}>Akülü</option>
+                                <option value="Elektrikli" {% if request.args.get('enerji') == 'Elektrikli' or (makine_data and makine_data.yakit == 'Elektrikli') %}selected{% endif %}>Elektrikli</option>
+                                <option value="Dizel" {% if request.args.get('enerji') == 'Dizel' or (makine_data and makine_data.yakit == 'Dizel') %}selected{% endif %}>Dizel</option>
+                                <option value="Hibrit" {% if request.args.get('enerji') == 'Hibrit' or (makine_data and makine_data.yakit == 'Hibrit') %}selected{% endif %}>Hibrit</option>
                             {% endif %}
                         </select>
                     </div>
@@ -83,37 +82,37 @@
                         <label for="f-ortam" class="form-label fw-bold small">Kullanım Ortamı</label>
                         <select id="f-ortam" class="form-select border-0 shadow-sm">
                             <option value="">Farketmez</option>
-                            <option value="ic" {% if makine_data and makine_data.kullanim_ortami == 'ic' %}selected{% endif %}>Sadece İç Mekan (İz Yapmayan)</option>
-                            <option value="dis" {% if makine_data and makine_data.kullanim_ortami == 'dis' %}selected{% endif %}>Arazi / Dış Mekan</option>
+                            <option value="ic" {% if request.args.get('ortam') == 'ic' or (makine_data and makine_data.kullanim_ortami == 'ic') %}selected{% endif %}>Sadece İç Mekan</option>
+                            <option value="dis" {% if request.args.get('ortam') == 'dis' or (makine_data and makine_data.kullanim_ortami == 'dis') %}selected{% endif %}>Arazi / Dış Mekan</option>
                         </select>
                     </div>
 
                     <!-- 3. GRUP: Yükseklik ve Kapasite -->
                     <div class="col-md-4">
                         <label for="f-y-min" class="form-label fw-bold small">Min Çalışma Yük. (m)</label>
-                        <input type="number" id="f-y-min" class="form-control border-0 shadow-sm" placeholder="Örn: 14" value="{% if makine_data and makine_data.calisma_yuksekligi != None %}{{ makine_data.calisma_yuksekligi }}{% endif %}">
+                        <input type="number" id="f-y-min" class="form-control border-0 shadow-sm" placeholder="Örn: 14" value="{{ request.args.get('y_min', '') or ((makine_data.calisma_yuksekligi if makine_data and makine_data.calisma_yuksekligi != None else '')) }}">
                     </div>
                     <div class="col-md-4">
                         <label for="f-k-min" class="form-label fw-bold small">Min Kapasite (kg)</label>
-                        <input type="number" id="f-k-min" class="form-control border-0 shadow-sm" placeholder="Örn: 230" value="{% if makine_data and makine_data.kaldirma_kapasitesi != None %}{{ makine_data.kaldirma_kapasitesi }}{% elif makine_data and makine_data.kapasite != None %}{{ makine_data.kapasite }}{% endif %}">
+                        <input type="number" id="f-k-min" class="form-control border-0 shadow-sm" placeholder="Örn: 230" value="{{ request.args.get('k_min', '') or ((makine_data.kaldirma_kapasitesi if makine_data and makine_data.kaldirma_kapasitesi != None else (makine_data.kapasite if makine_data and makine_data.kapasite != None else ''))) }}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small text-danger">Max Kapalı Yük. (m)</label>
-                        <input type="number" step="0.01" id="f-ky-max" class="form-control border-0 shadow-sm border-start border-danger border-3" placeholder="Geçiş Sınırı" value="{% if makine_data and makine_data.kapali_yukseklik != None %}{{ makine_data.kapali_yukseklik }}{% endif %}">
+                        <input type="number" step="0.01" id="f-ky-max" class="form-control border-0 shadow-sm border-start border-danger border-3" placeholder="Geçiş Sınırı" value="{{ request.args.get('ky_max', '') or ((makine_data.kapali_yukseklik if makine_data and makine_data.kapali_yukseklik != None else '')) }}">
                     </div>
 
                     <!-- 4. GRUP: Ebatlar ve Ağırlık -->
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Max Genişlik (m)</label>
-                        <input type="number" step="0.01" id="f-genislik" class="form-control border-0 shadow-sm" placeholder="Örn: 1.20" value="{% if makine_data and makine_data.genislik != None %}{{ makine_data.genislik }}{% endif %}">
+                        <input type="number" step="0.01" id="f-genislik" class="form-control border-0 shadow-sm" placeholder="Örn: 1.20" value="{{ request.args.get('genislik_max', '') or ((makine_data.genislik if makine_data and makine_data.genislik != None else '')) }}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Max Uzunluk (m)</label>
-                        <input type="number" step="0.01" id="f-uzunluk" class="form-control border-0 shadow-sm" placeholder="Örn: 2.50" value="{% if makine_data and makine_data.uzunluk != None %}{{ makine_data.uzunluk }}{% endif %}">
+                        <input type="number" step="0.01" id="f-uzunluk" class="form-control border-0 shadow-sm" placeholder="Örn: 2.50" value="{{ request.args.get('uzunluk_max', '') or ((makine_data.uzunluk if makine_data and makine_data.uzunluk != None else '')) }}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small">Max Makine Ağırlığı (kg)</label>
-                        <input type="number" id="f-agirlik" class="form-control border-0 shadow-sm" placeholder="Örn: 3500" value="{% if makine_data and makine_data.agirlik != None %}{{ makine_data.agirlik }}{% endif %}">
+                        <input type="number" id="f-agirlik" class="form-control border-0 shadow-sm" placeholder="Örn: 3500" value="{{ request.args.get('agirlik_max', '') or ((makine_data.agirlik if makine_data and makine_data.agirlik != None else '')) }}">
                     </div>
                 </div>
             </div>
@@ -137,7 +136,9 @@
     const filterModalEl = document.getElementById('filterModal');
     const applyBtn = document.getElementById('f-apply');
     const countBadge = document.getElementById('f-count');
-    const mainSelect = document.getElementById('g-ekipman');
+    const targetSelectId = "{{ g_ekipman_id|default('g-ekipman') }}";
+    const mainSelect = document.getElementById(targetSelectId);
+    const redirectUrl = "{{ filtre_redirect_url|default('') }}";
 
     function collectParams() {
         const params = new URLSearchParams();
@@ -193,10 +194,23 @@
         applyBtn.onclick = async () => {
             applyBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Listeleniyor...';
             try {
-                const res = await fetch(`${API_URL}?${collectParams()}`);
+                const params = collectParams();
+
+                // Seçim kutusu olmayan ekranlarda (örn: filo.index), filtreyi URL query ile uygula.
+                if (!mainSelect && redirectUrl) {
+                    const qs = params.toString();
+                    window.location.href = qs ? `${redirectUrl}?${qs}` : redirectUrl;
+                    return;
+                }
+
+                const res = await fetch(`${API_URL}?${params}`);
                 const json = await res.json();
                 
                 if(json.success) {
+                    if (!mainSelect) {
+                        return;
+                    }
+
                     mainSelect.innerHTML = `<option value="0">--- Filtrelenmiş Sonuçlar (${json.count}) ---</option>`;
                     if(json.data.length > 0) {
                         json.data.forEach(item => {

@@ -32,9 +32,16 @@ def ps_word_olustur(firma):
             return None
 
         doc = DocxTemplate(template_path)
+        ana_sozlesme_baslangic_tarihi = (
+            firma.sozlesme_tarihi.strftime('%d.%m.%Y')
+            if firma.sozlesme_tarihi
+            else date.today().strftime('%d.%m.%Y')
+        )
         context = {
             'sozlesme_no': firma.sozlesme_no or "BELİRSİZ",
-            'tarih': firma.sozlesme_tarihi.strftime('%d.%m.%Y') if firma.sozlesme_tarihi else date.today().strftime('%d.%m.%Y'),
+            # Geriye uyumluluk için eski anahtar da korunur.
+            'tarih': ana_sozlesme_baslangic_tarihi,
+            'ana_sozlesme_baslangic_tarihi': ana_sozlesme_baslangic_tarihi,
             'firma_adi': firma.firma_adi.upper(),
             'adres': firma.iletisim_bilgileri or "",
             'vergi_dairesi': firma.vergi_dairesi or "",

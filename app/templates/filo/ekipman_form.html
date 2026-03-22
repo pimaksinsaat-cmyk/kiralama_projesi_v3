@@ -144,9 +144,19 @@
                     {{ form.kapali_yukseklik(class="form-control text-danger fw-bold", placeholder="Geçiş (m)", step="0.01") }}
                 </div>
             </div>
-            <div class="custom-checkbox">
-                {{ form.ic_mekan_uygun() }}
-                <label for="ic_mekan_uygun">Sadece İç Mekan (İz Yapmayan Beyaz Lastik)</label>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <div class="custom-checkbox">
+                        {{ form.ic_mekan_uygun() }}
+                        <label for="ic_mekan_uygun">Sadece İç Mekan</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="custom-checkbox">
+                        {{ form.arazi_tipi_uygun() }}
+                        <label for="arazi_tipi_uygun">Arazi Tipi</label>
+                    </div>
+                </div>
             </div>
         </fieldset>
         <!-- / TEKNİK ÖLÇÜLER -->
@@ -189,5 +199,62 @@
         const bugunYil = new Date().getFullYear();
         yilInput.value = bugunYil; 
     }
+
+    // Teknik olculer/agrlik alanlarinda 1,25 girisini 1.25 formatina cevir.
+    (function () {
+        const decimalFields = ['agirlik', 'genislik', 'uzunluk', 'kapali_yukseklik'];
+        const form = document.querySelector('form');
+
+        function normalizeDecimal(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return rawValue;
+            }
+
+            let value = String(rawValue).trim().replace(/\s+/g, '');
+            if (!value) {
+                return value;
+            }
+
+            if (value.includes(',') && value.includes('.')) {
+                // 1.234,56 -> 1234.56
+                if (value.lastIndexOf(',') > value.lastIndexOf('.')) {
+                    value = value.replace(/\./g, '').replace(',', '.');
+                } else {
+                    // 1,234.56 -> 1234.56
+                    value = value.replace(/,/g, '');
+                }
+            } else if (value.includes(',')) {
+                value = value.replace(',', '.');
+            }
+
+            return value;
+        }
+
+        decimalFields.forEach((fieldName) => {
+            const input = document.getElementById(fieldName);
+            if (!input) {
+                return;
+            }
+
+            input.setAttribute('inputmode', 'decimal');
+            input.setAttribute('lang', 'tr');
+
+            input.addEventListener('blur', function () {
+                this.value = normalizeDecimal(this.value);
+            });
+        });
+
+        if (form) {
+            form.addEventListener('submit', function () {
+                decimalFields.forEach((fieldName) => {
+                    const input = document.getElementById(fieldName);
+                    if (input) {
+                        input.value = normalizeDecimal(input.value);
+                    }
+                });
+            });
+        }
+    })();
+
 </script>
 {% endblock %}

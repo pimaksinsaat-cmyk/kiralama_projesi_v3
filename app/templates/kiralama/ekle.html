@@ -9,6 +9,17 @@
     .passive-area { opacity: 0.5; pointer-events: none; filter: grayscale(0.5); }
     .card-header { background-color: #f8f9fa; border-bottom: 2px solid #dee2e6; }
     .table-warning { background-color: #fff3cd !important; transition: background-color 0.3s ease; }
+    .form-check-input[type="checkbox"] {
+        border-color: #6c757d;
+        background-color: #dee2e6;
+    }
+    .form-check-input[type="checkbox"]:checked {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    .form-check-input[type="checkbox"]:focus {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
 </style>
 
 <div class="container">
@@ -49,6 +60,10 @@
                         <label>Form No</label>
                         {{ form.kiralama_form_no(class="form-control bg-light", readonly=true) }}
                     </div>
+                    <div class="col-12">
+                        <label>Makine Çalışma Adresi</label>
+                        {{ form.makine_calisma_adresi(class="form-control", rows="3", placeholder="Makinenin çalışacağı şantiye / saha adresini girin") }}
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,7 +87,7 @@
                                     {% endif %}
                                 {% endfor %}
                             </select>
-                            <button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#filterModal" title="Filtreleme Asistanını Aç">
+                            <button type="button" id="g-filter-btn" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#filterModal" title="Filtreleme Asistanını Aç">
                                 <i class="fas fa-filter"></i>
                             </button>
                         </div>
@@ -120,7 +135,15 @@
                     </div>
                     <div class="row g-2 mt-1">
                         <div class="col-md-3"><label>Model</label><input type="text" id="g-harici-model" class="form-control"></div>
-                        <div class="col-md-3"><label>Ekipman Tipi</label><input type="text" id="g-harici-tipi" class="form-control"></div>
+                        <div class="col-md-3">
+                            <label>Ekipman Tipi</label>
+                            <select id="g-harici-tipi" class="form-control">
+                                <option value="">--- Tip Seçiniz ---</option>
+                                {% for tip in tipler %}
+                                <option value="{{ tip }}">{{ tip }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                         <div class="col-md-2"><label>Yükseklik (m)</label><input type="number" id="g-harici-yukseklik" class="form-control"></div>
                         <div class="col-md-2"><label>Kapasite (kg)</label><input type="number" id="g-harici-kapasite" class="form-control"></div>
                         <div class="col-md-2"><label>Üretim Yılı</label><input type="number" id="g-harici-uretim" class="form-control"></div>
@@ -152,10 +175,19 @@
                 </div>
 
                 <div class="row mt-3 g-2">
-                    <div class="col-md-3"><label>Başlangıç Tarihi</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
-                    <div class="col-md-3"><label>Bitiş Tarihi</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
-                    <div class="col-md-3"><label>Günlük Satış (₺)</label><input type="number" id="g-gunluk" class="form-control"></div>
-                    <div class="col-md-3"><label>Nakliye Satış (₺)</label><input type="number" id="g-nakliye" class="form-control"></div>
+                    <div class="col-md-3"><label class="d-block mb-0">Başlangıç Tarihi</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
+                    <div class="col-md-3"><label class="d-block mb-0">Bitiş Tarihi</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
+                    <div class="col-md-3"><label class="d-block mb-0">Günlük Satış (₺)</label><input type="number" id="g-gunluk" class="form-control"></div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center gap-2 mb-0">
+                            <label class="mb-0">Nakliye Satış Bedeli (₺)</label>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="g-donus-fatura-et" style="transform: scale(0.9);">
+                                <label class="form-check-label fw-bold" for="g-donus-fatura-et" style="font-size: 0.80rem; margin-left: 2px;">Dönüş</label>
+                            </div>
+                        </div>
+                        <input type="number" id="g-nakliye" class="form-control">
+                    </div>
                 </div>
 
                 <div class="text-center mt-4 d-flex justify-content-center gap-2">
@@ -194,6 +226,7 @@
 </div>
 <!-- Filtre Modalı Dahil Ediliyor -->
 {% include 'kiralama/_filtre_modal.html' %}
+<script id="ekipman-sube-map" type="application/json">{{ ekipman_sube_map|default({}, true)|tojson|safe }}</script>
 <script>
 // --- OTOMATİK TARİH ATAMA ---
 document.addEventListener('DOMContentLoaded', function() {
@@ -222,15 +255,23 @@ let editingIdx = null;
 const tbody = document.querySelector('#kalem-tablosu tbody');
 const hiddenContainer = document.getElementById('hidden-kalemler');
 const g_ekipman = document.getElementById('g-ekipman');
+const g_filter_btn = document.getElementById('g-filter-btn');
 const g_ozmal_nakliye = document.getElementById('g-ozmal-nakliye-araci');
 const g_dis_ekipman = document.getElementById('g-dis-ekipman');
 const g_dis_nakliye = document.getElementById('g-dis-nakliye');
 const g_btn_ekle = document.getElementById('satir-ekle');
 const g_btn_vazgec = document.getElementById('duzenle-vazgec');
 const genelToplamEl = document.getElementById('genel-toplam');
+const ekipmanSubeMap = JSON.parse(document.getElementById('ekipman-sube-map')?.textContent || '{}');
 
 const val = id => document.getElementById(id) ? document.getElementById(id).value : "";
 const setVal = (id, v) => { if(document.getElementById(id)) document.getElementById(id).value = v; };
+
+function getSelectedOptionText(selectId) {
+    const el = document.getElementById(selectId);
+    if (!el || !el.selectedOptions || !el.selectedOptions.length) return '';
+    return (el.selectedOptions[0].text || '').trim();
+}
 
 /**
  * Makine listesini (Dropdown) günceller.
@@ -263,9 +304,11 @@ g_dis_ekipman.onchange = function() {
     if (this.checked) {
         alan.classList.remove('hidden');
         g_ekipman.disabled = true; g_ekipman.value = "0";
+        if (g_filter_btn) g_filter_btn.disabled = true;
     } else {
         alan.classList.add('hidden');
         g_ekipman.disabled = false;
+        if (g_filter_btn) g_filter_btn.disabled = false;
     }
 };
 
@@ -306,6 +349,7 @@ function resetEntryPanel() {
     // Switch/Checkbox'ları sıfırla
     g_dis_ekipman.checked = false; g_dis_ekipman.onchange();
     g_dis_nakliye.checked = false; g_dis_nakliye.onchange();
+    document.getElementById('g-donus-fatura-et').checked = false;
     
     // Listeyi yenile (Dropdown içindeki seçenekleri gizle/göster)
     refreshMakineListesi();
@@ -357,10 +401,19 @@ g_btn_ekle.onclick = function() {
     if (gun <= 0) { alert("⚠️ HATA: Gün sayısı hesaplanamamıştır. Lütfen tarih seçimlerini kontrol ediniz."); return; }
     const s_fiyat = parseFloat(val('g-gunluk')) || 0;
     const n_fiyat = parseFloat(val('g-nakliye')) || 0;
-    const toplam = (gun * s_fiyat) + n_fiyat;
+    const donusFaturaEt = document.getElementById('g-donus-fatura-et').checked;
+    const nk_adet = donusFaturaEt ? 2 : 1;
+    const nk_birim = n_fiyat;
+    const n_toplam = donusFaturaEt ? n_fiyat * 2 : n_fiyat;
+    const toplam = (gun * s_fiyat) + n_toplam;
 
     const isDisNak = g_dis_nakliye.checked;
     const makineAdi = isDis ? `${val('g-harici-marka')} ${val('g-harici-model')}` : g_ekipman.selectedOptions[0].text;
+    const seciliTedarikciText = getSelectedOptionText('g-harici-tedarikci');
+    const subeAdi = isDis ? '' : (ekipmanSubeMap[Number(g_ekipman.value)] || 'Şube Tanımsız');
+    const turDetay = isDis
+        ? `Dış Tedarik - ${val('g-harici-tedarikci') !== '0' ? seciliTedarikciText : 'Bilinmiyor'}`
+        : `Öz Mal - ${subeAdi}`;
 
     if (editingIdx !== null) {
         // GÜNCELLEME MODU
@@ -368,7 +421,7 @@ g_btn_ekle.onclick = function() {
         const group = hiddenContainer.querySelectorAll('.kalem-group')[editingIdx];
         
         tr.dataset.toplam = toplam;
-        tr.innerHTML = `<td></td><td>${makineAdi}</td><td>${isDis?'Dış':'Öz Mal'}</td><td>${bas} / ${bit} (${gun}g)</td><td>${gun}x${s_fiyat} + ${n_fiyat}</td><td><b>${toplam.toFixed(2)} ₺</b></td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-info duzenle-btn"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-sm btn-outline-danger sil-btn"><i class="fas fa-trash"></i></button></td>`;
+        tr.innerHTML = `<td></td><td>${makineAdi}</td><td>${turDetay}</td><td>${bas} / ${bit} (${gun}g)</td><td>${gun}x${s_fiyat} + ${nk_adet}x${nk_birim.toFixed(2)} ₺${donusFaturaEt ? ' (Dönüş dahil)' : ' (Tek Yön)'}</td><td><b>${toplam.toFixed(2)} ₺</b></td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-info duzenle-btn"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-sm btn-outline-danger sil-btn"><i class="fas fa-trash"></i></button></td>`;
         
         group.querySelector('[name$="-dis_tedarik_ekipman"]').value = isDis ? 1 : 0;
         group.querySelector('[name$="-ekipman_id"]').value = isDis ? 0 : g_ekipman.value;
@@ -387,14 +440,15 @@ g_btn_ekle.onclick = function() {
         group.querySelector('[name$="-kiralama_baslangici"]').value = bas;
         group.querySelector('[name$="-kiralama_bitis"]').value = bit;
         group.querySelector('[name$="-kiralama_brm_fiyat"]').value = s_fiyat;
-        group.querySelector('[name$="-nakliye_satis_fiyat"]').value = n_fiyat;
+        group.querySelector('[name$="-nakliye_satis_fiyat"]').value = n_toplam;
+        group.querySelector('[name$="-donus_nakliye_fatura_et"]').value = document.getElementById('g-donus-fatura-et').checked ? 1 : 0;
         group.querySelector('[name$="-nakliye_araci_id"]').value = isDisNak ? 0 : g_ozmal_nakliye.value;
 
     } else {
         // YENİ KAYIT MODU
         const tr = document.createElement('tr');
         tr.dataset.toplam = toplam;
-        tr.innerHTML = `<td></td><td>${makineAdi}</td><td>${isDis?'Dış':'Öz Mal'}</td><td>${bas} / ${bit} (${gun}g)</td><td>${gun}x${s_fiyat} + ${n_fiyat}</td><td><b>${toplam.toFixed(2)} ₺</b></td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-info duzenle-btn"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-sm btn-outline-danger sil-btn"><i class="fas fa-trash"></i></button></td>`;
+        tr.innerHTML = `<td></td><td>${makineAdi}</td><td>${turDetay}</td><td>${bas} / ${bit} (${gun}g)</td><td>${gun}x${s_fiyat} + ${nk_adet}x${nk_birim.toFixed(2)} ₺${donusFaturaEt ? ' (Dönüş dahil)' : ' (Tek Yön)'}</td><td><b>${toplam.toFixed(2)} ₺</b></td><td class="text-center"><button type="button" class="btn btn-sm btn-outline-info duzenle-btn"><i class="fas fa-edit"></i></button> <button type="button" class="btn btn-sm btn-outline-danger sil-btn"><i class="fas fa-trash"></i></button></td>`;
         tbody.appendChild(tr);
 
         const group = document.createElement('div');
@@ -418,7 +472,8 @@ g_btn_ekle.onclick = function() {
             <input type="hidden" name="kalemler-${indexCounter}-kiralama_baslangici" value="${bas}">
             <input type="hidden" name="kalemler-${indexCounter}-kiralama_bitis" value="${bit}">
             <input type="hidden" name="kalemler-${indexCounter}-kiralama_brm_fiyat" value="${s_fiyat}">
-            <input type="hidden" name="kalemler-${indexCounter}-nakliye_satis_fiyat" value="${n_fiyat}">
+            <input type="hidden" name="kalemler-${indexCounter}-nakliye_satis_fiyat" value="${n_toplam}">
+            <input type="hidden" name="kalemler-${indexCounter}-donus_nakliye_fatura_et" value="${document.getElementById('g-donus-fatura-et').checked ? 1 : 0}">
             <input type="hidden" name="kalemler-${indexCounter}-nakliye_araci_id" value="${isDisNak?0:g_ozmal_nakliye.value}">
         `;
         hiddenContainer.appendChild(group);
@@ -445,6 +500,7 @@ tbody.onclick = function(e) {
         setVal('g-bitis', group.querySelector('[name$="-kiralama_bitis"]').value);
         setVal('g-gunluk', group.querySelector('[name$="-kiralama_brm_fiyat"]').value);
         setVal('g-nakliye', group.querySelector('[name$="-nakliye_satis_fiyat"]').value);
+        document.getElementById('g-donus-fatura-et').checked = group.querySelector('[name$="-donus_nakliye_fatura_et"]').value === '1';
         
         const isDis = group.querySelector('[name$="-dis_tedarik_ekipman"]').value == "1";
         g_dis_ekipman.checked = isDis; g_dis_ekipman.onchange();
