@@ -126,8 +126,21 @@ def create_app(config_class=Config):
     app.register_blueprint(ayarlar_bp, url_prefix='/ayarlar')
     
     with app.app_context():
-        from flask_migrate import upgrade
-        upgrade()
+        from alembic.util.exc import CommandError
+        from flask_migrate import stamp, upgrade
+
+        try:
+            upgrade()
+        except CommandError as exc:
+            # Eski/silinmis bir revizyon kaydi varsa uygulama acilisini kilitleme.
+            if "Can't locate revision identified by" in str(exc):
+                app.logger.warning(
+                    "Alembic revizyonu bulunamadi. Mevcut DB surumu head olarak damgalaniyor: %s",
+                    exc,
+                )
+                stamp(revision='head')
+            else:
+                raise
 
         from app.auth.models import User
         from app.ayarlar.models import AppSettings
