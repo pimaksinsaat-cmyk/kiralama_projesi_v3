@@ -418,29 +418,61 @@ class KiralamaService(BaseService):
         return kira_tahakkuk + nakliye_tahakkuk
 
     @staticmethod
+    def _hesapla_sozlesme_kalem_tutari(kalem):
+        """Kalem için toplam sozlesme tutarini hesaplar (tum sure)."""
+        bas = to_date(kalem.kiralama_baslangici)
+        bit = to_date(kalem.kiralama_bitis)
+        if not (bas and bit) or bit < bas:
+            return Decimal('0.00')
+
+        gun = (bit - bas).days + 1
+        kira_toplam = to_decimal(kalem.kiralama_brm_fiyat) * Decimal(gun)
+        nakliye_toplam = to_decimal(kalem.nakliye_satis_fiyat)
+        return kira_toplam + nakliye_toplam
+
+    @staticmethod
     def guncelle_cari_toplam(kiralama_id, auto_commit=True):
         """Kiralamaya ait müşteri carisini bekleyen (tahakkuk eden) tutara göre günceller."""
         kiralama = db.session.get(Kiralama, kiralama_id)
         if not kiralama:
             return
 
-        cari_kayit = HizmetKaydi.query.filter(
-            HizmetKaydi.ozel_id == kiralama.id,
+        aday_kayitlar = HizmetKaydi.query.filter(
             HizmetKaydi.yon == 'giden',
-            HizmetKaydi.aciklama.like('Kiralama Bekleyen Bakiye%')
-        ).first()
-        if not cari_kayit:
-            cari_kayit = HizmetKaydi.query.filter(
-                HizmetKaydi.fatura_no == kiralama.kiralama_form_no,
-                HizmetKaydi.yon == 'giden',
-                HizmetKaydi.aciklama.like('Kiralama Bekleyen Bakiye%')
-            ).first()
+            HizmetKaydi.is_deleted == False,
+            HizmetKaydi.aciklama.like('Kiralama Bekleyen Bakiye%'),
+            (
+                (HizmetKaydi.ozel_id == kiralama.id) |
+                (HizmetKaydi.fatura_no == kiralama.kiralama_form_no)
+            )
+        ).order_by(HizmetKaydi.id.asc()).all()
 
-        toplam_gelir = Decimal('0.00')
+        cari_kayit = None
+        for kayit in aday_kayitlar:
+            if kayit.ozel_id == kiralama.id and kayit.fatura_no == kiralama.kiralama_form_no:
+                cari_kayit = kayit
+                break
+        if not cari_kayit and aday_kayitlar:
+            cari_kayit = aday_kayitlar[0]
+
+        # Ayni kiralama icin birden fazla bekleyen bakiye kaydi olusmussa tek kayda indir.
+        for kayit in aday_kayitlar:
+            if cari_kayit and kayit.id != cari_kayit.id:
+                db.session.delete(kayit)
+
+        toplam_tahakkuk = Decimal('0.00')
+        toplam_sozlesme = Decimal('0.00')
+        aktif_kalem_var = False
         for kalem in kiralama.kalemler:
             if not kalem.is_active:
                 continue
-            toplam_gelir += KiralamaService._hesapla_bekleyen_kalem_tutari(kalem)
+            aktif_kalem_var = True
+            toplam_tahakkuk += KiralamaService._hesapla_bekleyen_kalem_tutari(kalem)
+            toplam_sozlesme += KiralamaService._hesapla_sozlesme_kalem_tutari(kalem)
+
+        # Tahakkuk bugun icin 0 ciksa bile (gelecek baslangicli kiralama vb.)
+        # sozlesme tutari varsa cariye yansitilir.
+        toplam_gelir = toplam_tahakkuk if toplam_tahakkuk > 0 else (toplam_sozlesme if aktif_kalem_var else Decimal('0.00'))
 
         if toplam_gelir > 0:
             if not cari_kayit:
@@ -454,6 +486,9 @@ class KiralamaService(BaseService):
                     aciklama=f"Kiralama Bekleyen Bakiye - {kiralama.kiralama_form_no}"
                 )
             else:
+                cari_kayit.firma_id = kiralama.firma_musteri_id
+                cari_kayit.fatura_no = kiralama.kiralama_form_no
+                cari_kayit.ozel_id = kiralama.id
                 cari_kayit.tarih = date.today()
                 cari_kayit.tutar = toplam_gelir
                 cari_kayit.aciklama = f"Kiralama Bekleyen Bakiye - {kiralama.kiralama_form_no}"
