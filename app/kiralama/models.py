@@ -6,7 +6,7 @@ class Kiralama(BaseModel):
     __tablename__ = 'kiralama'
     
     
-    kiralama_form_no = db.Column(db.String(100), nullable=True)
+    kiralama_form_no = db.Column(db.String(100), nullable=False, unique=True)
     makine_calisma_adresi = db.Column(db.Text, nullable=True)
     kiralama_olusturma_tarihi = db.Column(db.Date, nullable=True)  # Form ilk hazırlandı ğında set edilir, sonra değişmez
     kdv_orani = db.Column(db.Integer, nullable=False, default=20)

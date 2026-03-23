@@ -7,6 +7,7 @@ from decimal import Decimal
 # (Not: Kendi dosya yolunuza göre bu import'u güncelleyebilirsiniz)
 from app.forms.base_form import BaseForm, MoneyField, TRDateField 
 from app.utils import secim_hata_mesaji
+from app import db
 
 # 1. KALEM FORMU (Satır Bazlı Detaylar)
 class KiralamaKalemiForm(BaseForm):
@@ -55,7 +56,7 @@ class KiralamaKalemiForm(BaseForm):
 
 # 2. ANA KİRALAMA FORMU
 class KiralamaForm(BaseForm):
-    kiralama_form_no = StringField('Kiralama Form No', validators=[Optional()])
+    kiralama_form_no = StringField('Kiralama Form No', validators=[InputRequired(message='Form numarası gereklidir')])
     makine_calisma_adresi = TextAreaField('Makine Çalışma Adresi', validators=[Optional()])
     
     # Müşteri Seçimi
@@ -71,3 +72,22 @@ class KiralamaForm(BaseForm):
     
     kalemler = FieldList(FormField(KiralamaKalemiForm), min_entries=1)
     submit = SubmitField('Kiralama Formunu Kaydet')
+    
+    def validate_kiralama_form_no(self, field):
+        """Form numarasının duplicate olmadığını kontrol et (düzenlemede kendi numarasını exclude et)."""
+        if field.data:
+            from app.kiralama.models import Kiralama
+            form_no = (field.data or '').strip()
+            if not form_no:
+                raise ValidationError('Form numarası gereklidir')
+
+            # Düzenleme ekranında route tarafından set edilir.
+            current_kiralama_id = getattr(self, 'current_kiralama_id', None)
+            
+            # Başka kaydın aynı numarası varsa hata
+            existing = Kiralama.query.filter_by(kiralama_form_no=form_no).first()
+            if existing and (current_kiralama_id is None or existing.id != current_kiralama_id):
+                raise ValidationError(
+                    f'Bu form numarası ({form_no}) zaten sisteme kayıtlı! '
+                    f'Başka bir numarası kullanınız veya kontrol ediniz.'
+                )

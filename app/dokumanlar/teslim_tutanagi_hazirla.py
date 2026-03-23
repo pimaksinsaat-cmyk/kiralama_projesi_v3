@@ -31,17 +31,34 @@ def teslim_tutanagi_hazirla(rental_id):
         # 2. Kalem verilerini Word tablosu formatında hazırla
         kalemler_verisi = []
         for kalem in kiralama.kalemler:
+            kullanim_yeri = kiralama.makine_calisma_adresi or "-"
+
             # Ekipman ve Seri No Belirleme
             if kalem.is_dis_tedarik_ekipman:
-                ekipman_adi = f"{kalem.harici_ekipman_marka} {kalem.harici_ekipman_model}"
+                marka = (kalem.harici_ekipman_marka or "").strip()
+                model = (kalem.harici_ekipman_model or "").strip()
+                ekipman_adi = " ".join([x for x in [marka, model] if x]) or "Bilinmiyor"
                 seri_no = kalem.harici_ekipman_seri_no or "-"
             else:
-                ekipman_adi = f"{kalem.ekipman.kod} ({kalem.ekipman.tipi})" if kalem.ekipman else "Bilinmiyor"
-                seri_no = kalem.ekipman.seri_no if kalem.ekipman else "-"
+                if kalem.ekipman:
+                    marka = (kalem.ekipman.marka or "").strip()
+                    model = (kalem.ekipman.model or "").strip()
+                    ekipman_adi = " ".join([x for x in [marka, model] if x])
+                    if not ekipman_adi:
+                        ekipman_adi = f"{kalem.ekipman.kod} ({kalem.ekipman.tipi})"
+                    seri_no = kalem.ekipman.seri_no or "-"
+                else:
+                    marka = ""
+                    model = ""
+                    ekipman_adi = "Bilinmiyor"
+                    seri_no = "-"
 
             kalemler_verisi.append({
                 'ekipman': ekipman_adi,
+                'ekipman_marka': marka or "-",
+                'ekipman_model': model or "-",
                 'seri_no': seri_no,
+                'makine_kullanim_yeri': kullanim_yeri,
                 'teslim_tarihi': kalem.kiralama_baslangici.strftime('%d.%m.%Y')
             })
 

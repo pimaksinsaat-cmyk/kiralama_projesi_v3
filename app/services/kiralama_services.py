@@ -476,12 +476,13 @@ class KiralamaService(BaseService):
         max_retries = 3
         retry_count = 0
         
+        # Form numarası zorunlu kontrol
+        if not kiralama_data.get('kiralama_form_no'):
+            raise ValueError("Kiralama form numarası boş olamaz. Lütfen form numarası giriniz.")
+        
         while retry_count < max_retries:
             try:
                 # db.session.begin_nested() 
-
-                if not kiralama_data.get('kiralama_form_no'):
-                    kiralama_data['kiralama_form_no'] = cls.get_next_form_no()
 
                 kiralama = Kiralama(**kiralama_data)
                 cls.save(kiralama, is_new=True, auto_commit=False, actor_id=actor_id)

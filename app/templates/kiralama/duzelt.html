@@ -69,8 +69,9 @@
                         {{ form.kdv_orani(class="form-control") }}
                     </div>
                     <div class="col-12 col-md-2">
-                        <label>Form No</label>
-                        {{ form.kiralama_form_no(class="form-control bg-light", readonly=true) }}
+                        <label>Form No <span class="text-danger">*</span></label>
+                        {{ form.kiralama_form_no(class="form-control bg-light", readonly=true, title="Form numarası düzenlemede değiştirilemez") }}
+                        <small class="text-muted d-block mt-1">Sadece ekleme ekranında değiştirilebilir</small>
                     </div>
                     <div class="col-12">
                         <label>Makine Çalışma Adresi</label>

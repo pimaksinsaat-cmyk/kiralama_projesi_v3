@@ -80,6 +80,7 @@ def teslim_tutanagi_uret(kiralama, kalemler_verisi, musteri):
             'musteri_unvan': musteri.firma_adi.upper(),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_adres': musteri.iletisim_bilgileri or "",
+            'makine_kullanim_yeri': kiralama.makine_calisma_adresi or "-",
             'kalemler': kalemler_verisi # Word'de {% tr for k in kalemler %}
         }
         

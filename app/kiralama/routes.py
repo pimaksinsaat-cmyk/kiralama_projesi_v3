@@ -210,15 +210,35 @@ def ekle():
 
     # --- TCMB KURU VE FORM NUMARASI OTOMATİK DOLDURMA ---
     if request.method == 'GET':
+        # Kur bilgisini al
         try:
             kurlar = KiralamaService.get_tcmb_kurlari()
             form.doviz_kuru_usd.data = kurlar.get('USD', 1.0)
             if hasattr(form, 'doviz_kuru_eur'):
                 form.doviz_kuru_eur.data = kurlar.get('EUR', 1.0)
-                
+        except Exception as e:
+            current_app.logger.warning(f"TCMB kur bilgisi alınamadı: {str(e)}")
+        
+        # Form numarasını otomatik al, hata durumunda manuel girilmesine izin ver
+        try:
             form.kiralama_form_no.data = KiralamaService.get_next_form_no()
         except Exception as e:
-            current_app.logger.warning(f"Varsayılan değerler forma basılırken hata: {e}")
+            current_app.logger.error(f"Form numarası otomatik alınamadı: {str(e)}")
+            # Son form numarasını al ve kullanıcıya bilgi ver
+            try:
+                last_kiralama = Kiralama.query.order_by(Kiralama.id.desc()).first()
+                last_form_no = last_kiralama.kiralama_form_no if last_kiralama else "Kayıt bulunamadı"
+                flash(
+                    f"Uyarı: Form numarası otomatik alınamadı. Son form numarası: {last_form_no}. "
+                    f"Lütfen manuel olarak giriniz.",
+                    "warning"
+                )
+            except Exception as e2:
+                flash(
+                    "Uyarı: Form numarası otomatik alınamadı. Lütfen manuel olarak giriniz. "
+                    "Örnek format: PF-2026/0001",
+                    "warning"
+                )
     # ----------------------------------------------------
 
     if form.validate_on_submit():
@@ -259,6 +279,17 @@ def ekle():
                 success=False,
             )
             flash(f"Doğrulama Hatası: {str(e)}", "warning")
+        except ValueError as e:
+            OperationLogService.log(
+                module='kiralama',
+                action='create',
+                user_id=getattr(current_user, 'id', None),
+                username=getattr(current_user, 'username', None),
+                entity_type='Kiralama',
+                description=f"Kiralama oluşturma veri hatası: {str(e)}",
+                success=False,
+            )
+            flash(f"Veri Hatası: {str(e)}", "danger")
         except Exception as e:
             current_app.logger.error(f"Kiralama Kayıt Hatası: {str(e)}")
             OperationLogService.log(
@@ -301,6 +332,11 @@ def duzenle(kiralama_id):
 
     kiralama = db.get_or_404(Kiralama, kiralama_id)
     form = KiralamaForm(obj=kiralama)
+    form.current_kiralama_id = kiralama.id
+
+    # Düzenleme ekranında form numarası değiştirilemez.
+    if request.method == 'POST':
+        form.kiralama_form_no.data = kiralama.kiralama_form_no
 
     if request.method == 'GET':
         form.makine_calisma_adresi.data = kiralama.makine_calisma_adresi

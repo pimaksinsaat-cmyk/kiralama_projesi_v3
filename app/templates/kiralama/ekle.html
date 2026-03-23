@@ -76,8 +76,13 @@
                         {{ form.kdv_orani(class="form-control") }}
                     </div>
                     <div class="col-12 col-md-2">
-                        <label>Form No</label>
-                        {{ form.kiralama_form_no(class="form-control bg-light", readonly=true) }}
+                        <label>Form No <span class="text-danger">*</span></label>
+                        {% if form.kiralama_form_no.data %}
+                            {{ form.kiralama_form_no(class="form-control", title="Gerekirse değiştirebilirsiniz") }}
+                        {% else %}
+                            {{ form.kiralama_form_no(class="form-control is-invalid", placeholder="Manuel giriş gerekli") }}
+                            <small class="d-block text-danger mt-1">⚠️ Otomatik alınamadı, lütfen manuel giriniz</small>
+                        {% endif %}
                     </div>
                     <div class="col-12">
                         <label>Makine Çalışma Adresi</label>
