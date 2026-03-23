@@ -146,6 +146,32 @@ def create_app(config_class=Config):
 
         if inspect(db.engine).has_table('app_settings'):
             AppSettings.get_current()
+
+    # --- Günlük Otomatik Yedekleme (APScheduler) ---
+    # Werkzeug reloader'ın child sürecinde veya production'da başlat
+    import os as _os
+    if not app.debug or _os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        try:
+            import atexit
+            from apscheduler.schedulers.background import BackgroundScheduler
+            from app.db_menu.routes import otomatik_yedek_al
+
+            _scheduler = BackgroundScheduler(daemon=True)
+            _scheduler.add_job(
+                func=lambda: otomatik_yedek_al(app),
+                trigger='cron',
+                hour=2,
+                minute=0,
+                id='gunluk_yedek',
+                replace_existing=True,
+            )
+            _scheduler.start()
+            atexit.register(lambda: _scheduler.shutdown(wait=False))
+            # Uygulama ilk başladığında bugünün yedeğini al
+            otomatik_yedek_al(app)
+        except Exception:
+            pass
+
     return app
     
 

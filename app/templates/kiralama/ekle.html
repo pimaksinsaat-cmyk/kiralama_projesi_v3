@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Yeni Kiralama - Pimaks{% endblock %}
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2/dist/js/tom-select.complete.min.js"></script>
+{% endblock %}
 {% block content %}
 
 <style>
@@ -19,6 +23,15 @@
     }
     .form-check-input[type="checkbox"]:focus {
         box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+    .ts-control input {
+        text-align: left;
+    }
+    .ts-control input::placeholder,
+    #firma-musteri-filtre::placeholder {
+        color: #9ca3af !important;
+        opacity: 1;
+        font-style: italic;
     }
 </style>
 
@@ -48,9 +61,15 @@
             </div>
             <div class="card-body">
                 <div class="row g-3">
-                    <div class="col-12 col-md-8">
+                    <div class="col-12 col-md-6">
                         <label>Kiracı Müşteri</label>
-                        {{ form.firma_musteri_id(class="form-select select2 w-100") }}
+                        <div class="input-group">
+                            {{ form.firma_musteri_id(class="form-select select2") }}
+                            <button type="button" class="btn btn-outline-secondary" id="btn-musteri-filtre" title="Müşteri filtresini aç / arama kutusuna odaklan">
+                                <i class="fas fa-filter"></i>
+                            </button>
+                        </div>
+                        <input type="text" id="firma-musteri-filtre" class="form-control form-control-sm mt-2 hidden" placeholder="Müşteri filtrele (ad / unvan yazın)...">
                     </div>
                     <div class="col-6 col-md-2">
                         <label>KDV (%)</label>
@@ -174,9 +193,13 @@
                     </div>
                 </div>
 
-                <div class="row mt-3 g-2">
-                    <div class="col-md-3"><label class="d-block mb-0">Başlangıç Tarihi</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
-                    <div class="col-md-3"><label class="d-block mb-0">Bitiş Tarihi</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-2"><label class="d-block mb-0">Başlangıç Tarihi</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
+                    <div class="col-md-2"><label class="d-block mb-0">Bitiş Tarihi</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
+                    <div class="col-md-1 text-center">
+                        <label class="d-block mb-1" style="font-size:0.75rem;">Süre</label>
+                        <span id="gun-sayisi-badge" class="badge d-block py-1" style="background:#6c8ebf;font-size:0.82rem;font-weight:600;letter-spacing:0.02em;">— gün</span>
+                    </div>
                     <div class="col-md-3"><label class="d-block mb-0">Günlük Satış (₺)</label><input type="number" id="g-gunluk" class="form-control"></div>
                     <div class="col-md-3">
                         <div class="d-flex align-items-center gap-2 mb-0">
@@ -188,6 +211,14 @@
                         </div>
                         <input type="number" id="g-nakliye" class="form-control">
                     </div>
+                </div>
+                <!-- Hızlı Süre Butonları -->
+                <div class="row mt-1 g-1">
+                    <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="7">7 gün</button></div>
+                    <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="15">15 gün</button></div>
+                    <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="30">30 gün</button></div>
+                    <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="60">60 gün</button></div>
+                    <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="90">90 gün</button></div>
                 </div>
 
                 <div class="text-center mt-4 d-flex justify-content-center gap-2">
@@ -247,6 +278,42 @@ document.addEventListener('DOMContentLoaded', function() {
     if (bitisKutusu && !bitisKutusu.value) {
         bitisKutusu.value = yarinFormatli;
     }
+
+    gunSayisiGuncelle();
+    document.getElementById('g-baslangic').addEventListener('change', gunSayisiGuncelle);
+    document.getElementById('g-bitis').addEventListener('change', gunSayisiGuncelle);
+});
+
+function gunSayisiGuncelle() {
+    const bas = document.getElementById('g-baslangic')?.value;
+    const bit = document.getElementById('g-bitis')?.value;
+    const badge = document.getElementById('gun-sayisi-badge');
+    if (!badge) return;
+    if (bas && bit) {
+        const gun = Math.max(((new Date(bit) - new Date(bas)) / 86400000) + 1, 0);
+        badge.textContent = gun + ' gün';
+        badge.style.background = gun > 0 ? '#6c8ebf' : '#c0392b';
+    } else {
+        badge.textContent = '— gün';
+        badge.style.background = '#9ca3af';
+    }
+}
+
+document.querySelectorAll('.hizli-sure-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        const gun = parseInt(this.dataset.gun);
+        const basEl = document.getElementById('g-baslangic');
+        if (!basEl || !basEl.value) {
+            const simdi = new Date();
+            simdi.setMinutes(simdi.getMinutes() - simdi.getTimezoneOffset());
+            basEl.value = simdi.toISOString().split('T')[0];
+        }
+        const bas = new Date(basEl.value);
+        bas.setDate(bas.getDate() + gun - 1);
+        bas.setMinutes(bas.getMinutes() - bas.getTimezoneOffset());
+        document.getElementById('g-bitis').value = bas.toISOString().split('T')[0];
+        gunSayisiGuncelle();
+    });
 });
 
 let indexCounter = 0;
@@ -498,6 +565,7 @@ tbody.onclick = function(e) {
 
         setVal('g-baslangic', group.querySelector('[name$="-kiralama_baslangici"]').value);
         setVal('g-bitis', group.querySelector('[name$="-kiralama_bitis"]').value);
+        gunSayisiGuncelle();
         setVal('g-gunluk', group.querySelector('[name$="-kiralama_brm_fiyat"]').value);
         setVal('g-nakliye', group.querySelector('[name$="-nakliye_satis_fiyat"]').value);
         document.getElementById('g-donus-fatura-et').checked = group.querySelector('[name$="-donus_nakliye_fatura_et"]').value === '1';
@@ -562,6 +630,92 @@ document.getElementById('kiralama-form').onsubmit = function(e) {
         e.preventDefault(); return false;
     }
 };
+
+// --- MÜŞTERİ SEÇİM ARAMA ---
+const musteriSelect = document.getElementById('firma_musteri_id');
+const musteriFiltreInput = document.getElementById('firma-musteri-filtre');
+const musteriFiltreBtn = document.getElementById('btn-musteri-filtre');
+const musteriBilgiMetni = 'Müşteri aramak için filtre ikonuna basın';
+
+if (musteriSelect && musteriSelect.options.length > 0 && musteriSelect.options[0].value === '0') {
+    // Bilgi metnini option içine yazma; arama sonuçlarına karışmamalı.
+    musteriSelect.options[0].text = '';
+}
+
+if (window.TomSelect && musteriSelect) {
+    const musteriTom = new TomSelect('#firma_musteri_id', {
+        placeholder: musteriBilgiMetni,
+        allowEmptyOption: true,
+        searchField: ['text'],
+        maxOptions: 1000,
+        render: {
+            no_results: function() {
+                return '<div class="no-results">Sonuç bulunamadı</div>';
+            }
+        }
+    });
+
+    if (musteriFiltreBtn) {
+        musteriFiltreBtn.addEventListener('click', function() {
+            musteriTom.clear(true);
+            musteriTom.focus();
+            musteriTom.open();
+
+            // İmleç solda ve yazmaya hazır olsun.
+            setTimeout(function() {
+                const input = musteriTom.control_input;
+                if (!input) return;
+                input.placeholder = '';
+                input.value = '';
+                input.focus();
+                input.setSelectionRange(0, 0);
+            }, 0);
+        });
+    }
+} else if (musteriSelect && musteriFiltreInput) {
+    // CDN erişimi olmazsa native select üzerinde hızlı filtre.
+    const orijinalOpsiyonlar = Array.from(musteriSelect.options).map(opt => ({
+        value: opt.value,
+        text: opt.text,
+        selected: opt.selected
+    }));
+
+    musteriFiltreInput.addEventListener('input', function() {
+        const q = this.value.trim().toLocaleLowerCase('tr-TR');
+        const seciliDeger = musteriSelect.value;
+
+        musteriSelect.innerHTML = '';
+
+        orijinalOpsiyonlar.forEach(function(opt) {
+            if (opt.value === '0' || opt.text.toLocaleLowerCase('tr-TR').includes(q)) {
+                const yeniOpt = document.createElement('option');
+                yeniOpt.value = opt.value;
+                yeniOpt.text = opt.text;
+                musteriSelect.appendChild(yeniOpt);
+            }
+        });
+
+        if (Array.from(musteriSelect.options).some(o => o.value === seciliDeger)) {
+            musteriSelect.value = seciliDeger;
+        } else {
+            musteriSelect.value = '0';
+        }
+    });
+
+    if (musteriFiltreBtn) {
+        musteriFiltreBtn.addEventListener('click', function() {
+            if (musteriSelect.options.length > 0 && musteriSelect.options[0].value === '0') {
+                musteriSelect.options[0].text = '';
+            }
+            musteriFiltreInput.placeholder = '';
+            musteriFiltreInput.classList.toggle('hidden');
+            if (!musteriFiltreInput.classList.contains('hidden')) {
+                musteriFiltreInput.focus();
+                musteriFiltreInput.setSelectionRange(0, 0);
+            }
+        });
+    }
+}
 </script>
 
 {% endblock %}

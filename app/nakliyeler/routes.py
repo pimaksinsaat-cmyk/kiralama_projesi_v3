@@ -9,7 +9,7 @@ from app.services.operation_log_service import OperationLogService
 from app.firmalar.models import Firma
 from app.araclar.models import Arac
 from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 def _actor():
     return current_user.id if current_user.is_authenticated else None
@@ -47,8 +47,11 @@ def index():
     if per_page not in {10, 20, 50, 100}:
         per_page = 20
 
-    baslangic = request.args.get('baslangic')
-    bitis = request.args.get('bitis')
+    bugun = date.today()
+    varsayilan_baslangic = (bugun - timedelta(days=15)).isoformat()
+
+    baslangic = request.args.get('baslangic') or varsayilan_baslangic
+    bitis = request.args.get('bitis') or bugun.isoformat()
     secili_plaka = request.args.get('plaka')
     secili_taseron_id = request.args.get('taseron_id')
 

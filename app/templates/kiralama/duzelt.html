@@ -195,9 +195,13 @@
                     <div class="col-12">
                         <div class="bg-white p-4 rounded border shadow-sm">
                             <h6 class="section-title text-success">Süre ve Fiyatlandırma</h6>
-                            <div class="row g-3">
-                                <div class="col-6 col-md-3"><label>Başlangıç</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
-                                <div class="col-6 col-md-3"><label>Bitiş</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
+                            <div class="row g-3 align-items-end">
+                                <div class="col-6 col-md-2"><label>Başlangıç</label><input type="date" id="g-baslangic" class="form-control border-primary"></div>
+                                <div class="col-6 col-md-2"><label>Bitiş</label><input type="date" id="g-bitis" class="form-control border-primary"></div>
+                                <div class="col-12 col-md-1 text-center">
+                                    <label class="d-block mb-1" style="font-size:0.75rem;">Süre</label>
+                                    <span id="gun-sayisi-badge" class="badge d-block py-1" style="background:#6c8ebf;font-size:0.82rem;font-weight:600;letter-spacing:0.02em;">— gün</span>
+                                </div>
                                 <div class="col-6 col-md-3"><label class="text-success">Günlük Kira (₺)</label><input type="number" step="0.01" id="g-gunluk" class="form-control border-success"></div>
                                 <div class="col-6 col-md-3">
                                     <div class="d-flex align-items-center gap-2 mb-2">
@@ -209,6 +213,14 @@
                                     </div>
                                     <input type="number" step="0.01" id="g-nakliye" class="form-control border-success">
                                 </div>
+                            </div>
+                            <!-- Hızlı Süre Butonları -->
+                            <div class="row mt-1 g-1">
+                                <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="7">7 gün</button></div>
+                                <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="15">15 gün</button></div>
+                                <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="30">30 gün</button></div>
+                                <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="60">60 gün</button></div>
+                                <div class="col-auto"><button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0 hizli-sure-btn" data-gun="90">90 gün</button></div>
                             </div>
                         </div>
                     </div>
@@ -331,11 +343,45 @@ function formatTRCurrency(amount) {
     return parseFloat(amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function gunSayisiGuncelle() {
+    const bas = val('g-baslangic');
+    const bit = val('g-bitis');
+    const badge = document.getElementById('gun-sayisi-badge');
+    if (!badge) return;
+    if (bas && bit) {
+        const gun = hesaplaGun(bas, bit);
+        badge.textContent = gun + ' gün';
+        badge.style.background = gun > 0 ? '#6c8ebf' : '#c0392b';
+    } else {
+        badge.textContent = '— gün';
+        badge.style.background = '#9ca3af';
+    }
+}
+
+document.querySelectorAll('.hizli-sure-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        const gun = parseInt(this.dataset.gun);
+        const basEl = document.getElementById('g-baslangic');
+        if (!basEl.value) {
+            const simdi = new Date();
+            simdi.setMinutes(simdi.getMinutes() - simdi.getTimezoneOffset());
+            basEl.value = simdi.toISOString().split('T')[0];
+        }
+        const bas = new Date(basEl.value);
+        bas.setDate(bas.getDate() + gun - 1);
+        bas.setMinutes(bas.getMinutes() - bas.getTimezoneOffset());
+        document.getElementById('g-bitis').value = bas.toISOString().split('T')[0];
+        gunSayisiGuncelle();
+        liveCalc();
+    });
+});
+
 function liveCalc() {
     const bas = val('g-baslangic');
     const bit = val('g-bitis');
     const gunluk = parseFloat(val('g-gunluk')) || 0;
     const nakliye = parseFloat(val('g-nakliye')) || 0;
+    gunSayisiGuncelle();
     if (bas && bit) {
         const gun = hesaplaGun(bas, bit);
         const toplam = (gun * gunluk) + nakliye;
@@ -593,6 +639,7 @@ tbody.onclick = function(e) {
 
         setVal('g-baslangic', group.querySelector('[name$="-kiralama_baslangici"]').value);
         setVal('g-bitis', group.querySelector('[name$="-kiralama_bitis"]').value);
+        gunSayisiGuncelle();
         setVal('g-gunluk', group.querySelector('[name$="-kiralama_brm_fiyat"]').value);
         setVal('g-alis-fiyat', group.querySelector('[name$="-kiralama_alis_fiyat"]').value);
         const storedNakSatis = parseFloat(group.querySelector('[name$="-nakliye_satis_fiyat"]').value) || 0;

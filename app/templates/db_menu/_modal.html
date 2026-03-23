@@ -3,85 +3,60 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-file-excel me-2 text-success"></i>DB Yedekleme (Excel)</h5>
+                <h5 class="modal-title"><i class="fas fa-database me-2 text-primary"></i>DB Yedekleme</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted mb-2">İşlem tipini seçip ilgili sekmeden devam edin.</p>
 
-                {% if db_backup_tables %}
-                <ul class="nav nav-tabs mb-3" id="dbBackupTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="yedek-tab" data-bs-toggle="tab" data-bs-target="#yedek-pane" type="button" role="tab" aria-controls="yedek-pane" aria-selected="true">
-                            <i class="fas fa-download me-1 text-success"></i> Yedekleme
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="yukle-tab" data-bs-toggle="tab" data-bs-target="#yukle-pane" type="button" role="tab" aria-controls="yukle-pane" aria-selected="false">
-                            <i class="fas fa-upload me-1 text-danger"></i> Geri Yükleme
-                        </button>
-                    </li>
-                </ul>
+                <!-- Manuel SQL Yedek -->
+                <div class="mb-4">
+                    <h6 class="fw-semibold mb-2">
+                        <i class="fas fa-download me-1 text-success"></i> Manuel SQL Yedeği Al
+                    </h6>
+                    <p class="text-muted small mb-2">
+                        Butona basınca tüm veritabanı <code>.sql</code> formatında indirilir.
+                    </p>
+                    <a href="{{ url_for('db_menu.db_yedek_sql') }}" class="btn btn-success">
+                        <i class="fas fa-file-code me-1"></i> SQL Yedeği İndir
+                    </a>
+                </div>
 
-                <div class="tab-content" id="dbBackupTabsContent">
-                    <div class="tab-pane fade show active" id="yedek-pane" role="tabpanel" aria-labelledby="yedek-tab">
-                        <form method="POST" action="{{ url_for('db_menu.db_yedek_excel') }}" class="border rounded p-3 bg-light-subtle">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <h6 class="mb-2 text-success"><i class="fas fa-download me-1"></i> Excel Yedeği Al</h6>
-                            <div class="d-flex gap-2 mb-3">
-                                <button type="button" class="btn btn-sm btn-outline-primary" id="db-backup-select-all">Tümünü Seç</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="db-backup-clear-all">Seçimi Temizle</button>
-                            </div>
-                            <div class="row g-2" id="db-backup-table-list">
-                                {% for table_name in db_backup_tables %}
-                                <div class="col-md-6">
-                                    <label class="form-check border rounded px-2 py-2 d-flex align-items-center gap-2">
-                                        <input class="form-check-input db-backup-checkbox" type="checkbox" name="tables" value="{{ table_name }}">
-                                        <span class="small fw-semibold">{{ table_name }}</span>
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            <div class="mt-3 text-end">
-                                <button type="submit" class="btn btn-success"><i class="fas fa-download me-1"></i> Excel Yedeği İndir</button>
-                            </div>
-                        </form>
-                    </div>
+                <hr>
 
-                    <div class="tab-pane fade" id="yukle-pane" role="tabpanel" aria-labelledby="yukle-tab">
-                        <form method="POST" action="{{ url_for('db_menu.db_yedek_excel_yukle') }}" enctype="multipart/form-data" class="border rounded p-3 bg-danger-subtle">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <h6 class="mb-2 text-danger"><i class="fas fa-upload me-1"></i> Excel'den Geri Yükle</h6>
-                            <div class="alert alert-warning py-2 small">
-                                Dikkat: Seçtiğiniz tabloların mevcut kayıtları silinip Excel içeriği ile tekrar yazılır.
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Yedek Excel Dosyası (.xlsx)</label>
-                                <input type="file" class="form-control" name="backup_file" accept=".xlsx" required>
-                            </div>
-                            <div class="d-flex gap-2 mb-3">
-                                <button type="button" class="btn btn-sm btn-outline-primary" id="db-restore-select-all">Tümünü Seç</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="db-restore-clear-all">Seçimi Temizle</button>
-                            </div>
-                            <div class="row g-2" id="db-restore-table-list">
-                                {% for table_name in db_backup_tables %}
-                                <div class="col-md-6">
-                                    <label class="form-check border rounded px-2 py-2 d-flex align-items-center gap-2 bg-white">
-                                        <input class="form-check-input db-restore-checkbox" type="checkbox" name="restore_tables" value="{{ table_name }}">
-                                        <span class="small fw-semibold">{{ table_name }}</span>
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            <div class="mt-3 text-end">
-                                <button type="submit" class="btn btn-danger"><i class="fas fa-upload me-1"></i> Excel'den Geri Yükle</button>
-                            </div>
-                        </form>
-                    </div>
+                <!-- Otomatik Günlük Yedekler Listesi -->
+                <h6 class="fw-semibold mb-2">
+                    <i class="fas fa-clock me-1 text-info"></i> Otomatik Günlük Yedekler
+                </h6>
+                {% if db_yedek_listesi %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Dosya Adı</th>
+                                <th>Boyut</th>
+                                <th>Tarih</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for y in db_yedek_listesi %}
+                            <tr>
+                                <td><i class="fas fa-file-code me-1 text-muted"></i>{{ y.ad }}</td>
+                                <td>{{ y.boyut_kb }} KB</td>
+                                <td>{{ y.tarih }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
                 {% else %}
-                <div class="alert alert-warning mb-0">Yedeklenebilir tablo listesi alınamadı.</div>
+                <p class="text-muted small">Henüz otomatik yedek oluşturulmamış.</p>
                 {% endif %}
+                <p class="text-muted small mt-2">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Otomatik yedekler her gece saat 02:00'de alınır, son 7 günlük saklanır.
+                    Yedekler <code>backups/</code> klasöründe tutulur.
+                </p>
+
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Kapat</button>
@@ -89,31 +64,4 @@
         </div>
     </div>
 </div>
-
-<script>
-    (function () {
-        const selectAllBtn = document.getElementById('db-backup-select-all');
-        const clearAllBtn = document.getElementById('db-backup-clear-all');
-        const restoreSelectAllBtn = document.getElementById('db-restore-select-all');
-        const restoreClearAllBtn = document.getElementById('db-restore-clear-all');
-
-        if (!selectAllBtn || !clearAllBtn) {
-            return;
-        }
-
-        function setAll(selector, checked) {
-            document.querySelectorAll(selector).forEach((cb) => {
-                cb.checked = checked;
-            });
-        }
-
-        selectAllBtn.addEventListener('click', function () { setAll('.db-backup-checkbox', true); });
-        clearAllBtn.addEventListener('click', function () { setAll('.db-backup-checkbox', false); });
-
-        if (restoreSelectAllBtn && restoreClearAllBtn) {
-            restoreSelectAllBtn.addEventListener('click', function () { setAll('.db-restore-checkbox', true); });
-            restoreClearAllBtn.addEventListener('click', function () { setAll('.db-restore-checkbox', false); });
-        }
-    })();
-</script>
 {% endif %}
