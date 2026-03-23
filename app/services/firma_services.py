@@ -150,6 +150,13 @@ class FirmaService(BaseService):
             if getattr(h, 'is_deleted', False):
                 continue
 
+            if (
+                getattr(h, 'ozel_id', None)
+                and getattr(h, 'aciklama', '').startswith('Kiralama Bekleyen Bakiye')
+                and not db.session.get(Kiralama, h.ozel_id)
+            ):
+                continue
+
             tutar = h.tutar or Decimal('0')
             
             # KESİN TESPİT: 0 veya None değilse (gerçek bir ID varsa) Kiralamadır/Nakliyedir!
