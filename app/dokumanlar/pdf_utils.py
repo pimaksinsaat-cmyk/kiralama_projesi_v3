@@ -4,24 +4,26 @@ import subprocess
 
 def convert_docx_to_pdf(docx_path, output_dir, logger=None, timeout_seconds=30):
     current_os = platform.system()
-    
-    # Dosya yollarını kesinleştir (Absolute Path her zaman daha güvenlidir)
+
+    # 1. Klasörü oluştur ve Linux'ta "kapıları aç"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        if current_os != "Windows":
+            os.chmod(output_dir, 0o777) # Herkes yazabilsin
+
     abs_docx = os.path.abspath(docx_path)
-    # LibreOffice çıktı ismini otomatik belirler, biz sadece yolunu hazırlayalım
     filename = os.path.basename(abs_docx).replace(".docx", ".pdf")
     abs_pdf = os.path.join(os.path.abspath(output_dir), filename)
 
     if current_os == "Windows":
-        # ... (Windows kısmın kalsın, orası doğru görünüyor)
+        # Burası senin mevcut Windows mantığınla devam eder...
         pass
 
-    # --- LinuX / Helsinki Tarafı İçin İyileştirilmiş Bölüm ---
+    # --- Helsinki / Linux Operasyonu ---
     try:
-        # LibreOffice sunucuda çalışırken bazen bir 'Home' dizini arar.
-        # -env:UserInstallation ile ona geçici bir çalışma alanı gösteriyoruz.
         command = [
             "soffice",
-            "-env:UserInstallation=file:///tmp/libreoffice_profile", # Bu satır hayat kurtarır
+            "-env:UserInstallation=file:///tmp/libreoffice_profile",
             "--headless",
             "--convert-to", "pdf",
             "--outdir", os.path.abspath(output_dir),
@@ -31,18 +33,20 @@ def convert_docx_to_pdf(docx_path, output_dir, logger=None, timeout_seconds=30):
         result = subprocess.run(
             command,
             check=True,
-            capture_output=True,
+            capture_output=True, # Hata mesajlarını yakalar
+            text=True,           # Mesajları okunabilir metin yapar
             timeout=timeout_seconds,
         )
         
         if os.path.exists(abs_pdf):
             return abs_pdf
         else:
-            if logger: logger.error(f"PDF oluştu denildi ama dosya bulunamadı: {abs_pdf}")
+            # Burası kritik: Eğer dosya yoksa LibreOffice ne dedi?
+            error_msg = f"PDF oluşmadı! LibreOffice Çıktısı: {result.stdout} {result.stderr}"
+            if logger: logger.error(error_msg)
             return None
 
     except Exception as e:
         msg = f"soffice ile PDF donusumu basarisiz: {str(e)}"
         if logger: logger.error(msg)
-        print(msg)
         return None
