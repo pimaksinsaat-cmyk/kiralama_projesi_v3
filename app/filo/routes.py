@@ -19,7 +19,7 @@ from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.subeler.models import Sube
 from app.araclar.models import Arac as NakliyeAraci
 from app.firmalar.models import Firma
-from app.utils import ensure_active_sube_exists
+from app.utils import ensure_active_sube_exists, normalize_turkish_upper
 from app.extensions import db
 from app.services.operation_log_service import OperationLogService
 
@@ -377,7 +377,7 @@ def excel_ice_yukle():
             kaldirma_kapasitesi = _to_int(row[7], default=0)
             uretim_yili = _to_int(row[8], default=date.today().year)
             giris_maliyeti = _to_decimal(row[9], default='0')
-            para_birimi = ((row[10] or 'TRY').strip() if row[10] else 'TRY')[:3].upper()
+            para_birimi = normalize_turkish_upper((row[10] or 'TRY').strip() if row[10] else 'TRY')[:3]
 
             sube_adi = (row[11] or '').strip() if row[11] else ''
             calisma_durumu = (row[12] or 'bosta').strip() if row[12] else 'bosta'

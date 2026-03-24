@@ -181,15 +181,17 @@ def arac_liste():
 @nakliye_bp.route('/arac/ekle', methods=['GET', 'POST'])
 def arac_ekle():
     from .forms import AracForm # Döngüsel importu önlemek için
+    from app.utils import normalize_turkish_upper
     form = AracForm()
     if form.validate_on_submit():
         try:
-            mevcut = Arac.query.filter_by(plaka=form.plaka.data.upper().strip()).first()
+            plaka_norm = normalize_turkish_upper(form.plaka.data)
+            mevcut = Arac.query.filter_by(plaka=plaka_norm).first()
             if mevcut:
                 flash(f"{form.plaka.data} zaten kayıtlı!", "danger")
             else:
                 yeni_arac = Arac(
-                    plaka=form.plaka.data.upper().strip(),
+                    plaka=plaka_norm,
                     arac_tipi=form.arac_tipi.data,
                     marka_model=form.marka_model.data
                 )

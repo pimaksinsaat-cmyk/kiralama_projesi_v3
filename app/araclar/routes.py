@@ -6,6 +6,7 @@ from . import araclar_bp
 from .models import Arac
 from .forms import AracForm
 from app.subeler.models import Sube
+from app.utils import normalize_turkish_upper
 
 @araclar_bp.route('/')
 def index():
@@ -56,7 +57,7 @@ def ekle():
     sube_listesi = Sube.query.filter_by(is_active=True).order_by(Sube.isim).all()
     form.sube_id.choices = [(0, '--- Şube Seçiniz ---')] + [(s.id, s.isim) for s in sube_listesi]
     if form.validate_on_submit():
-        plaka_norm = form.plaka.data.upper().replace(" ", "")
+        plaka_norm = normalize_turkish_upper(form.plaka.data).replace(" ", "")
         mevcut = Arac.query.filter_by(plaka=plaka_norm).first()
         if mevcut:
             flash(f'{plaka_norm} plakalı araç zaten kayıtlı.', 'warning')
@@ -88,7 +89,7 @@ def duzenle(arac_id):
     sube_listesi = Sube.query.filter_by(is_active=True).order_by(Sube.isim).all()
     form.sube_id.choices = [(0, '--- Şube Seçiniz ---')] + [(s.id, s.isim) for s in sube_listesi]
     if form.validate_on_submit():
-        plaka_norm = form.plaka.data.upper().replace(" ", "")
+        plaka_norm = normalize_turkish_upper(form.plaka.data).replace(" ", "")
         mevcut = Arac.query.filter(Arac.plaka == plaka_norm, Arac.id != arac.id).first()
         if mevcut:
             flash(f'{plaka_norm} plakası başka bir araçta kayıtlı.', 'warning')

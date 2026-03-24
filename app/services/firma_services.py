@@ -10,7 +10,7 @@ from app.kiralama.models import Kiralama, KiralamaKalemi
 from app.cari.models import Odeme
 from app.extensions import db
 from app.ayarlar.models import AppSettings
-from app.utils import klasor_adi_temizle
+from app.utils import klasor_adi_temizle, normalize_turkish_upper
 
 class FirmaService(BaseService):
     """
@@ -40,7 +40,7 @@ class FirmaService(BaseService):
     def before_save(cls, instance, is_new=True):
         """Kayıt öncesi standartlaştırma."""
         if instance.firma_adi:
-            instance.firma_adi = instance.firma_adi.strip().upper()
+            instance.firma_adi = normalize_turkish_upper(instance.firma_adi)
         if instance.vergi_no:
             instance.vergi_no = instance.vergi_no.strip()
 

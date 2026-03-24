@@ -8,6 +8,7 @@ from datetime import date
 from flask import send_file, flash, redirect, url_for, current_app
 from docxtpl import DocxTemplate
 from .pdf_utils import convert_docx_to_pdf
+from app.utils import turkish_upper
 
 # Loglama yapılandırması
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +37,7 @@ def post_process_kiralama_docx(docx_path, vergi_no, sozlesme_tarihi_str, kalemle
             if not text:
                 continue
 
-            if 'VERGİ KİMLİK NO' in text.upper() and vergi_no:
+            if 'VERGİ KİMLİK NO' in turkish_upper(text) and vergi_no:
                 updated = re.sub(
                     r'(VERGİ\s*KİMLİK\s*NO\s*)(X+)',
                     rf'\1{vergi_no}',
@@ -56,7 +57,7 @@ def post_process_kiralama_docx(docx_path, vergi_no, sozlesme_tarihi_str, kalemle
                 if updated != text:
                     paragraph.text = updated
 
-            if 'MAKİNE KULLANIM YERİ' in text.upper() and makine_kullanim_yeri:
+            if 'MAKİNE KULLANIM YERİ' in turkish_upper(text) and makine_kullanim_yeri:
                 updated = re.sub(
                     r'(MAKİNE\s*KULLANIM\s*YERİ\s*)(.+)$',
                     rf'\1{makine_kullanim_yeri}',
@@ -204,7 +205,7 @@ def kiralama_formu_yazdir(rental_id):
             'genel_sozlesme_no': gs_no,
             'genel_sozlesme_trh': gs_trh_fmt,
             'makine_kullanim_yeri': kiralama.makine_calisma_adresi or "",
-            'musteri_unvan': musteri.firma_adi.upper(),
+            'musteri_unvan': turkish_upper(musteri.firma_adi),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_vergi_no': musteri.vergi_no or "",
             'musteri_vergi_dairesi': musteri.vergi_dairesi or "",

@@ -9,7 +9,7 @@ from app import db
 from app.ayarlar import ayarlar_bp
 from app.ayarlar.forms import AppSettingsForm
 from app.ayarlar.models import AppSettings
-from app.utils import admin_required
+from app.utils import admin_required, normalize_turkish_upper
 
 
 def _save_logo(file_storage):
@@ -42,7 +42,7 @@ def _apply_uppercase_to_settings(settings, form):
     
     for field_name, field_value in uppercase_fields.items():
         if field_value and isinstance(field_value, str):
-            setattr(settings, field_name, field_value.upper())
+            setattr(settings, field_name, normalize_turkish_upper(field_value))
         else:
             setattr(settings, field_name, field_value)
     

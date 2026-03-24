@@ -3,6 +3,7 @@ from wtforms import IntegerField, StringField, SubmitField, TextAreaField
 from wtforms.validators import Email, InputRequired, Length, NumberRange, Optional
 
 from app.forms.base_form import BaseForm
+from app.utils import normalize_turkish_upper
 
 
 class AppSettingsForm(BaseForm):
@@ -62,6 +63,6 @@ class AppSettingsForm(BaseForm):
         for field_name in uppercase_fields:
             field = getattr(self, field_name, None)
             if field and field.data and isinstance(field.data, str):
-                field.data = field.data.upper()
+                field.data = normalize_turkish_upper(field.data)
         
         return super().validate_on_submit()

@@ -5,6 +5,17 @@ from flask import flash, redirect, url_for, abort
 from flask_login import current_user
 
 
+_TR_UPPER_MAP = str.maketrans({
+    'i': 'İ',
+    'ı': 'I',
+    'ç': 'Ç',
+    'ğ': 'Ğ',
+    'ö': 'Ö',
+    'ş': 'Ş',
+    'ü': 'Ü',
+})
+
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -15,6 +26,24 @@ def admin_required(f):
 
 # Ortak hata mesajı değişkeni
 secim_hata_mesaji = "Lütfen geçerli bir seçim yapınız."
+
+
+def turkish_upper(value):
+    """Metni Turkce buyuk harf kurallarina gore donusturur."""
+    if value is None:
+        return None
+    return str(value).translate(_TR_UPPER_MAP).upper()
+
+
+def normalize_turkish_upper(value, strip=True):
+    """Kullanici girdilerini Turkce uyumlu sekilde buyuk harfe cevirir."""
+    if value is None:
+        return None
+
+    text = str(value)
+    if strip:
+        text = text.strip()
+    return turkish_upper(text)
 
 
 def ensure_active_sube_exists(redirect_endpoint='subeler.index', warning_message=None):

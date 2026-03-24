@@ -5,6 +5,7 @@ import logging
 import re
 from datetime import date
 from docxtpl import DocxTemplate
+from app.utils import turkish_upper
 
 # Windows için COM başlatma
 if platform.system() == "Windows":
@@ -77,7 +78,7 @@ def teslim_tutanagi_uret(kiralama, kalemler_verisi, musteri):
         context = {
             'form_no': kiralama.kiralama_form_no,
             'gunun_tarihi': form_tarihi,
-            'musteri_unvan': musteri.firma_adi.upper(),
+            'musteri_unvan': turkish_upper(musteri.firma_adi),
             'musteri_vergi': f"{musteri.vergi_dairesi or ''} / {musteri.vergi_no or ''}",
             'musteri_adres': musteri.iletisim_bilgileri or "",
             'makine_kullanim_yeri': kiralama.makine_calisma_adresi or "-",

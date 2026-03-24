@@ -1,3 +1,9 @@
+from app.firmalar import firmalar_bp
+from flask_login import login_required
+from app.utils import admin_required
+# -------------------------------------------------------------------------
+# Sözleşme No Düzelt (Admin)
+# -------------------------------------------------------------------------
 import os
 from io import BytesIO
 from flask import render_template, url_for, redirect, flash, request, current_app, send_file
@@ -95,6 +101,7 @@ def index():
         query = query.order_by(None).order_by(sort_expression, desc(Firma.id))
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         
+        from app.firmalar.forms import SozlesmeNoDuzeltForm
         return render_template(
             'firmalar/index.html',
             firmalar=pagination.items,
@@ -102,7 +109,8 @@ def index():
             per_page=per_page,
             q=q,
             sort_by=sort_by,
-            sort_dir=sort_dir
+            sort_dir=sort_dir,
+            form=SozlesmeNoDuzeltForm()
         )
     except Exception as e:
         current_app.logger.error(f"Firma listesi yüklenirken hata: {str(e)}")
@@ -457,4 +465,34 @@ def excel_ice_yukle():
     if errors:
         flash('Bazı satırlar işlenemedi: ' + ' | '.join(errors[:5]), 'warning')
 
+    return redirect(url_for('firmalar.index'))
+
+# -------------------------------------------------------------------------
+# Sözleşme No Düzelt (Admin)
+# -------------------------------------------------------------------------
+from app.firmalar.forms import SozlesmeNoDuzeltForm
+
+@firmalar_bp.route('/sozlesme_no_duzelt', methods=['POST'])
+@login_required
+@admin_required
+def sozlesme_no_duzelt():
+    form = SozlesmeNoDuzeltForm()
+    if not form.validate_on_submit():
+        flash('Form doğrulaması başarısız oldu. Lütfen tekrar deneyin.', 'danger')
+        return redirect(url_for('firmalar.index'))
+    firma_id = int(form.firma_id.data)
+    yeni_sozlesme_no = form.sozlesme_no.data.strip()
+    firma = Firma.query.get(firma_id)
+    if not firma:
+        flash('Firma bulunamadı.', 'danger')
+        return redirect(url_for('firmalar.index'))
+    # Aynı sözleşme_no başka bir firmada var mı?
+    if yeni_sozlesme_no:
+        mevcut = Firma.query.filter(Firma.sozlesme_no == yeni_sozlesme_no, Firma.id != firma_id).first()
+        if mevcut:
+            flash('Bu sözleşme numarası başka bir firmada zaten kullanılıyor.', 'danger')
+            return redirect(url_for('firmalar.index'))
+    firma.sozlesme_no = yeni_sozlesme_no
+    db.session.commit()
+    flash('Sözleşme numarası başarıyla güncellendi.', 'success')
     return redirect(url_for('firmalar.index'))

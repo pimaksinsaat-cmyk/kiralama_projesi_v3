@@ -3,6 +3,7 @@ from app.filo.models import Ekipman, BakimKaydi
 from app.kiralama.models import KiralamaKalemi
 from app.extensions import db
 from datetime import datetime
+from app.utils import normalize_turkish_upper
 
 class EkipmanService(BaseService):
     """
@@ -39,9 +40,9 @@ class EkipmanService(BaseService):
     def before_save(cls, instance, is_new=True):
         """Veritabanına yazılmadan milisaniyeler önce veriyi standartlaştırır."""
         if instance.kod:
-            instance.kod = instance.kod.strip().upper()
+            instance.kod = normalize_turkish_upper(instance.kod)
         if instance.seri_no:
-            instance.seri_no = instance.seri_no.strip().upper()
+            instance.seri_no = normalize_turkish_upper(instance.seri_no)
         
         # 'giris_maliyeti' alanını rotada veya formda string temizlemek yerine 
         # BaseForm ve MoneyField otomatik Decimal yapacağı için burada işleme gerek yok!

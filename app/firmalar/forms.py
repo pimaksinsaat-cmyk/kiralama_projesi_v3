@@ -1,4 +1,4 @@
-from wtforms import StringField, TextAreaField, SubmitField, BooleanField, IntegerField, EmailField
+from wtforms import StringField, TextAreaField, SubmitField, BooleanField, IntegerField, EmailField, HiddenField
 from wtforms.validators import DataRequired, Length, Optional, Email
 from datetime import date
 
@@ -60,3 +60,7 @@ class FirmaForm(BaseForm): # FlaskForm yerine BaseForm'dan miras alıyoruz
     is_tedarikci = BooleanField('Bu bir Tedarikçi mi?', default=False)
 
     submit = SubmitField('Firma Kaydını Tamamla')
+
+class SozlesmeNoDuzeltForm(BaseForm):
+    firma_id = HiddenField('Firma ID', validators=[DataRequired()])
+    sozlesme_no = StringField('Yeni Sözleşme No', validators=[DataRequired(), Length(max=50)])

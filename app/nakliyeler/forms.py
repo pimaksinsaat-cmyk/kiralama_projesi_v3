@@ -35,7 +35,8 @@ class TurkishDecimalField(StringField):
 # 1. NAKLİYE SEFER FORMU (Operasyonel)
 # ==========================================
 class NakliyeForm(FlaskForm):
-    tarih = DateField('Sefer Tarihi', format='%Y-%m-%d', validators=[DataRequired()])
+    from datetime import date
+    tarih = DateField('Sefer Tarihi', format='%Y-%m-%d', validators=[DataRequired()], default=date.today)
     
     # Müşteri (Kime fatura kesilecek)
     firma_id = SelectField('Müşteri / Firma', coerce=int, validators=[DataRequired()])

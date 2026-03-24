@@ -308,6 +308,13 @@
         <i class="fas fa-print me-3 text-dark"></i> Sözleşmeyi Yazdır (PS)
     </a>
 
+    {% if current_user.is_authenticated and current_user.is_admin() %}
+    <!-- SADECE ADMIN: Sözleşme No Düzelt -->
+    <a href="#" class="context-menu-item" id="menu-sozlesme-no-duzelt" style="color: #e67e22; font-weight: 600; display: none;">
+        <i class="fas fa-pen-nib me-3"></i> Sözleşme No Düzelt
+    </a>
+    {% endif %}
+
     <!-- ARŞİV KLASÖRÜ LİNKİ -->
     <a href="#" target="_blank" class="context-menu-item" id="menu-klasor-ac" style="color: #6b46c1; font-weight: 500;">
         <i class="fas fa-folder-open me-3"></i> Arşiv Klasörünü Aç
@@ -331,6 +338,38 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
+<!-- Sözleşme No Düzelt Modalı (Sadece Admin) -->
+{% if current_user.is_authenticated and current_user.is_admin() %}
+<div class="modal fade" id="sozlesmeNoDuzeltModal" tabindex="-1" aria-labelledby="sozlesmeNoDuzeltModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="sozlesmeNoDuzeltForm" method="POST" action="{{ url_for('firmalar.sozlesme_no_duzelt') }}">
+                {{ form.hidden_tag() }}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sozlesmeNoDuzeltModalLabel">Sözleşme No Düzelt</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+                </div>
+                <div class="modal-body">
+                    {{ form.firma_id(id='sozlesmeNoDuzeltFirmaId') }}
+                    <div class="mb-3">
+                        <label class="form-label">Firma</label>
+                        <div id="sozlesmeNoDuzeltFirmaAdi" class="fw-bold"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sozlesmeNoDuzeltInput" class="form-label">Yeni Sözleşme No</label>
+                        {{ form.sozlesme_no(class_='form-control', id='sozlesmeNoDuzeltInput', required=True, maxlength=50) }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const contextMenu = document.getElementById('context-menu');
@@ -347,6 +386,8 @@ document.addEventListener('DOMContentLoaded', function() {
         whatsapp: document.getElementById('menu-whatsapp'),
         duzenle: document.getElementById('menu-duzenle'),
         sil: document.getElementById('menu-sil')
+        // Admin için sözleşme no düzelt
+        , sozlesmeNoDuzelt: document.getElementById('menu-sozlesme-no-duzelt')
     };
     
     let activeData = {};
@@ -395,6 +436,11 @@ document.addEventListener('DOMContentLoaded', function() {
             items.klasor.href = `/static/arsiv/${activeData.klasor}/`;
         } else {
             items.klasor.style.display = 'none';
+        }
+
+        // Sözleşme No Düzelt sadece sözleşme_no varsa gösterilsin
+        if (items.sozlesmeNoDuzelt) {
+            items.sozlesmeNoDuzelt.style.display = hasPS ? 'flex' : 'none';
         }
 
         // WhatsApp kontrolü
@@ -462,6 +508,22 @@ document.addEventListener('DOMContentLoaded', function() {
             actionForm.submit();
         }
     });
+
+    // ADMIN: Sözleşme No Düzelt
+    if (items.sozlesmeNoDuzelt) {
+        items.sozlesmeNoDuzelt.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Modalı aç
+            document.getElementById('sozlesmeNoDuzeltFirmaAdi').innerText = activeData.adi;
+            // FlaskForm field name'lerine göre inputları güncelle
+            const firmaIdInput = document.querySelector('input[name="firma_id"]');
+            const sozlesmeNoInput = document.querySelector('input[name="sozlesme_no"]');
+            if (firmaIdInput) firmaIdInput.value = activeData.id;
+            if (sozlesmeNoInput) sozlesmeNoInput.value = activeData.ps || '';
+            var modal = new bootstrap.Modal(document.getElementById('sozlesmeNoDuzeltModal'));
+            modal.show();
+        });
+    }
 
     const excelImportTrigger = document.getElementById('firmalar-excel-ice-yukle-ac');
     const excelImportInput = document.getElementById('firmalar-excel-ice-yukle-input');

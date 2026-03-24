@@ -470,9 +470,8 @@ class KiralamaService(BaseService):
             toplam_tahakkuk += KiralamaService._hesapla_bekleyen_kalem_tutari(kalem)
             toplam_sozlesme += KiralamaService._hesapla_sozlesme_kalem_tutari(kalem)
 
-        # Tahakkuk bugun icin 0 ciksa bile (gelecek baslangicli kiralama vb.)
-        # sozlesme tutari varsa cariye yansitilir.
-        toplam_gelir = toplam_tahakkuk if toplam_tahakkuk > 0 else (toplam_sozlesme if aktif_kalem_var else Decimal('0.00'))
+        # Eğer kiralama gelecekte başlıyorsa cariye borç 0 gözüksün, başlangıç tarihinde otomatik hesaplama başlasın.
+        toplam_gelir = toplam_tahakkuk if toplam_tahakkuk > 0 else Decimal('0.00')
 
         if toplam_gelir > 0:
             if not cari_kayit:

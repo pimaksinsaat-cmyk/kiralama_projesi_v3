@@ -5,6 +5,7 @@ from docxtpl import DocxTemplate
 from datetime import date
 import logging
 import time
+from app.utils import turkish_upper
 
 # Log seviyesini ayarla
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +43,7 @@ def ps_word_olustur(firma):
             # Geriye uyumluluk için eski anahtar da korunur.
             'tarih': ana_sozlesme_baslangic_tarihi,
             'ana_sozlesme_baslangic_tarihi': ana_sozlesme_baslangic_tarihi,
-            'firma_adi': firma.firma_adi.upper(),
+            'firma_adi': turkish_upper(firma.firma_adi),
             'adres': firma.iletisim_bilgileri or "",
             'vergi_dairesi': firma.vergi_dairesi or "",
             'vergi_no': firma.vergi_no or "",
