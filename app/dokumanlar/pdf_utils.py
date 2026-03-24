@@ -30,8 +30,10 @@ def convert_docx_to_pdf(docx_path, output_dir, logger=None, timeout_seconds=30):
             convert(abs_docx, abs_pdf)
             return pdf_path if os.path.exists(abs_pdf) else None
         except Exception as e:
+            msg = f"docx2pdf ile Windows PDF donusumu basarisiz: {str(e)}"
             if logger:
-                logger.warning(f"docx2pdf ile Windows PDF donusumu basarisiz: {str(e)}")
+                logger.warning(msg)
+            print(msg)
         finally:
             try:
                 pythoncom.CoUninitialize()
@@ -56,6 +58,8 @@ def convert_docx_to_pdf(docx_path, output_dir, logger=None, timeout_seconds=30):
         )
         return pdf_path if os.path.exists(abs_pdf) else None
     except Exception as e:
+        msg = f"soffice ile PDF donusumu basarisiz: {str(e)}"
         if logger:
-            logger.error(f"soffice ile PDF donusumu basarisiz: {str(e)}")
+            logger.error(msg)
+        print(msg)
         return None
