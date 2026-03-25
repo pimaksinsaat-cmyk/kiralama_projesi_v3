@@ -260,33 +260,56 @@
 <script>
         function bindContextMenuAndLongPress(elements, callback) {
             elements.forEach(el => {
-                // 1. Masaüstü Sağ Tık Olayı
+                // 1. Masaüstü Sağ Tık Olayı (Burası zaten çalışıyor)
                 el.addEventListener('contextmenu', function(e) {
                     e.preventDefault(); 
                     e.stopPropagation();
                     callback(e.pageX, e.pageY, this);
                 });
 
-                // 2. Mobil Uzun Basma (Long Press) Olayı
-                let pressTimer;
+                // 2. Mobil Uzun Basma (Long Press) Olayı - GÜÇLENDİRİLMİŞ VERSİYON
+                let pressTimer = null;
+                let isDragging = false; // Kullanıcı sayfayı kaydırıyorsa iptal edeceğiz
+
+                // Dokunma başladığında sayacı başlat
                 el.addEventListener('touchstart', function(e) {
+                    isDragging = false; 
+                    
                     if (e.touches.length === 1) { 
-                        e.stopPropagation(); 
+                        // e.stopPropagation() BURADAN KALDIRILDI! (Bazen dokunmayı tamamen öldürüyor)
                         const touch = e.touches[0];
                         const pageX = touch.pageX;
                         const pageY = touch.pageY;
+                        const targetEl = this; // O an dokunulan satır/kalem
+                        
+                        // Önceki sayaç varsa temizle
+                        if (pressTimer) clearTimeout(pressTimer);
                         
                         pressTimer = setTimeout(() => {
-                            if (navigator.vibrate) navigator.vibrate(50);
-                            callback(pageX, pageY, this);
-                        }, 500); 
+                            if (!isDragging) { // Eğer sayfa kaydırılmıyorsa menüyü aç
+                                e.preventDefault(); // Menü açılırken başka bir şeye tıklanmasını engelle
+                                if (navigator.vibrate) navigator.vibrate(50);
+                                callback(pageX, pageY, targetEl);
+                            }
+                        }, 500); // 500ms bekle
                     }
-                }, {passive: true});
+                }, { passive: false }); // passive: false YAPILDI (preventDefault kullanabilmek için)
 
-                // Yanlışlıkla açılmaları iptal et
-                el.addEventListener('touchend', () => clearTimeout(pressTimer));
-                el.addEventListener('touchmove', () => clearTimeout(pressTimer));
-                el.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+                // Kullanıcı parmağını hareket ettirirse (sayfayı kaydırıyorsa) iptal et
+                el.addEventListener('touchmove', function(e) {
+                    isDragging = true;
+                    if (pressTimer) clearTimeout(pressTimer);
+                }, { passive: true });
+
+                // Kullanıcı parmağını çekerse veya dokunma iptal olursa iptal et
+                el.addEventListener('touchend', function(e) {
+                    if (pressTimer) clearTimeout(pressTimer);
+                    // Not: Eğer 500ms dolmadan parmak çekilirse normal tıklama sayılır
+                });
+
+                el.addEventListener('touchcancel', function(e) {
+                    if (pressTimer) clearTimeout(pressTimer);
+                });
             });
         }
     </script>

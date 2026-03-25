@@ -177,7 +177,7 @@
     <button type="button" id="hatirlatmaSilBtn"><i class="fas fa-trash-alt me-2"></i>Hatirlatmayi Sil</button>
 </div>
 
-<div id="hatirlatmaPopover" class="hatirlatma-popover">
+<div id="hatirlatmaPopover" class="hatirlatma-popover" style="display:none;">
     <div class="hatirlatma-popover-header" id="popoverBaslik"></div>
     <div class="hatirlatma-popover-body">
         <div class="hatirlatma-popover-baslik" id="popoverTitle"></div>
@@ -304,63 +304,53 @@
                         }
                         // Soldan taşarsa düzelt
                         if (popoverLeft < padding) {
-                            popoverLeft = padding;
-                        }
-                        
-                        // Alttan taşarsa üste çıkar
-                        if (popoverTop + popoverRect.height > window.innerHeight - padding) {
-                            popoverTop = rect.top - popoverRect.height - padding;
-                        }
-                        
-                        popover.style.left = popoverLeft + 'px';
-                        popover.style.top = popoverTop + 'px';
-                    }, 0);
-                } else {
-                    // Diğer event tiplerine tıklandığında alert göster
-                    const detay = info.event.extendedProps.detay || '-';
-                    alert('Tip: ' + tip + '\n' + 'Baslik: ' + info.event.title + '\n' + 'Detay: ' + detay);
-                }
-            },
-            eventDidMount: function (arg) {
-                const tip = arg.event.extendedProps.type;
-                const hatirlatmaId = arg.event.extendedProps.hatirlatma_id;
-                if (tip !== 'hatirlatma' || !hatirlatmaId) {
-                    return;
-                }
-
-                arg.el.addEventListener('contextmenu', function (ev) {
-                    ev.preventDefault();
-                    showContextMenu(ev.clientX, ev.clientY, hatirlatmaId);
-                });
-            }
-        });
-
-        calendar.render();
-
-        const hatirlatmaModal = document.getElementById('hatirlatmaModal');
-        if (hatirlatmaModal) {
-            hatirlatmaModal.addEventListener('show.bs.modal', function () {
-                if (!tarihInput.value) {
-                    tarihInput.value = getTodayIso();
-                }
-            });
-        }
-
-        if (deleteBtn && deleteForm) {
-            deleteBtn.addEventListener('click', function () {
-                if (!activeHatirlatmaId) {
-                    return;
-                }
-
-                const onay = confirm('Bu hatirlatmayi silmek istiyor musunuz?');
-                if (!onay) {
-                    return;
-                }
-
-                deleteForm.action = "{{ url_for('takvim.takvim_hatirlatma_sil', hatirlatma_id=0) }}".replace('/0', '/' + activeHatirlatmaId);
-                deleteForm.submit();
-            });
-        }
+                            hideContextMenu();
+                            const tip = info.event.extendedProps.type || 'kayit';
+                            // Hatirlatma event'i için popover göster
+                            if (tip === 'hatirlatma') {
+                                const tarihStr = info.event.startStr || '';
+                                const baslik = info.event.title || 'Hatirlatma';
+                                const aciklama = info.event.extendedProps.aciklama || '';
+                                // Tarih formatını Türkçeleştir
+                                let tarihGoster = tarihStr;
+                                if (tarihStr.length === 10) {
+                                    const [yil, ay, gun] = tarihStr.split('-');
+                                    tarihGoster = gun + '.' + ay + '.' + yil;
+                                }
+                                var popoverBaslik = document.getElementById('popoverBaslik');
+                                var popoverTitle = document.getElementById('popoverTitle');
+                                var popoverAciklama = document.getElementById('popoverAciklama');
+                                var popover = document.getElementById('hatirlatmaPopover');
+                                if (popoverBaslik && popoverTitle && popoverAciklama && popover) {
+                                    popoverBaslik.textContent = tarihGoster + ' Hatırlatma';
+                                    popoverTitle.textContent = baslik;
+                                    popoverAciklama.textContent = aciklama || '(Açıklama yok)';
+                                    const rect = info.el.getBoundingClientRect();
+                                    popover.style.display = 'block';
+                                    popover.style.position = 'fixed';
+                                    setTimeout(function() {
+                                        const popoverRect = popover.getBoundingClientRect();
+                                        const padding = 10;
+                                        let popoverLeft = rect.left;
+                                        let popoverTop = rect.bottom + padding;
+                                        if (popoverLeft + popoverRect.width > window.innerWidth - padding) {
+                                            popoverLeft = window.innerWidth - popoverRect.width - padding;
+                                        }
+                                        if (popoverLeft < padding) {
+                                            popoverLeft = padding;
+                                        }
+                                        if (popoverTop + popoverRect.height > window.innerHeight - padding) {
+                                            popoverTop = rect.top - popoverRect.height - padding;
+                                        }
+                                        popover.style.left = popoverLeft + 'px';
+                                        popover.style.top = popoverTop + 'px';
+                                    }, 0);
+                                }
+                            } else {
+                                // Diğer event tiplerine tıklandığında alert göster
+                                const detay = info.event.extendedProps.detay || '-';
+                                alert('Tip: ' + tip + '\n' + 'Başlık: ' + info.event.title + '\n' + 'Detay: ' + detay);
+                            }
 
         document.addEventListener('click', function (e) {
             // Popover'a tıklanmadıysa kapat
