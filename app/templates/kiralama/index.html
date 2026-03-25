@@ -611,7 +611,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Menu Click İşlemleri
     document.getElementById('menu-duzenle').onclick = () => { if(state.kUrl) window.location.href = state.kUrl; };
-    
+    // --- DOKUNMATİK VE SAĞ TIK DİNLEYİCİLERİ ---
+    document.querySelectorAll('.kiralama-satiri').forEach(row => {
+        row.addEventListener('contextmenu', (e) => openFormMenu(e, row));
+        let t;
+        row.addEventListener('touchstart', (e) => {
+            t = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); openFormMenu(e, row); }, 700);
+        }, { passive: true });
+        row.addEventListener('touchend', () => clearTimeout(t));
+        row.addEventListener('touchmove', () => clearTimeout(t));
+    });
+
+    document.querySelectorAll('.kalem-listesi-item').forEach(item => {
+        item.addEventListener('contextmenu', (e) => openItemMenu(e, item));
+        let t;
+        item.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // Satıra sinyal gitmesini engelle
+            t = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); openItemMenu(e, item); }, 700);
+        }, { passive: true });
+        item.addEventListener('touchend', () => clearTimeout(t));
+        item.addEventListener('touchmove', () => clearTimeout(t));
+    });
     // YAZDIRMA AKSİYONU (SADECE KİRALAMA FORMU)
     document.getElementById('menu-kiralama-formu').onclick = () => {
         if(state.rentalId) window.open(`/dokumanlar/yazdir/form/${state.rentalId}`, '_blank');

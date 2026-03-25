@@ -116,24 +116,22 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <div>
             <h2 class="mb-1">Takvim</h2>
-            <p class="text-muted mb-0">Yaklasan kiralama bitisleri, arac sigorta/muayene tarihleri ve hatirlatmalar</p>
+            <p class="text-muted mb-0">Yaklaşan kiralama bitişleri, araç sigorta/muayene tarihleri ve hatırlatmalar</p>
         </div>
         <div>
             <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#hatirlatmaModal">
-                <i class="fas fa-bell me-1"></i> Hatirlatma Ekle
+                <i class="fas fa-bell me-1"></i> Hatırlatma Ekle
             </button>
         </div>
     </div>
-
     <div class="mb-2">
-        <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span>Kiralama Bitis</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span>Kiralama Bitiş</span>
         <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span>Sigorta</span>
         <span class="legend-item"><span class="legend-dot" style="background:#2563eb;"></span>Muayene</span>
-        <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span>Hatirlatma</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span>Hatırlatma</span>
     </div>
-
-    <div class="calendar-shell">
-        <div id="takvim"></div>
+    <div class="calendar-shell" style="display:block;">
+        <div id="takvim" style="min-height: 500px;"></div>
     </div>
 </div>
 
@@ -264,62 +262,51 @@
             eventClick: function (info) {
                 hideContextMenu();
                 const tip = info.event.extendedProps.type || 'kayit';
-                
                 // Hatirlatma event'i için popover göster
                 if (tip === 'hatirlatma') {
                     const tarihStr = info.event.startStr || '';
                     const baslik = info.event.title || 'Hatirlatma';
                     const aciklama = info.event.extendedProps.aciklama || '';
-                    
                     // Tarih formatını Türkçeleştir
                     let tarihGoster = tarihStr;
                     if (tarihStr.length === 10) {
                         const [yil, ay, gun] = tarihStr.split('-');
                         tarihGoster = gun + '.' + ay + '.' + yil;
                     }
-                    
                     popoverBaslik.textContent = tarihGoster + ' Hatirlatma';
                     popoverTitle.textContent = baslik;
                     popoverAciklama.textContent = aciklama || '(Açıklama yok)';
-                    
                     // Popover'ı tıklanan yerin altında göster (viewport coordinates - fixed)
                     const rect = info.el.getBoundingClientRect();
-                    
                     // Önce göründür ve viewport'ta konumlandır
                     popover.style.display = 'block';
                     popover.style.position = 'fixed';
-                    
-                    // Popover width'ini öğren
                     setTimeout(function() {
                         const popoverRect = popover.getBoundingClientRect();
                         const padding = 10;
-                        
                         // Varsayılan: event'in altında, event'in sol kenarından
                         let popoverLeft = rect.left;
                         let popoverTop = rect.bottom + padding;
-                        
                         // Sağdan taşarsa sola kaydır
                         if (popoverLeft + popoverRect.width > window.innerWidth - padding) {
                             popoverLeft = window.innerWidth - popoverRect.width - padding;
                         }
                         // Soldan taşarsa düzelt
                         if (popoverLeft < padding) {
-                            hideContextMenu();
-                            const tip = info.event.extendedProps.type || 'kayit';
-                            // Hatirlatma event'i için popover göster
-                            if (tip === 'hatirlatma') {
-                                const tarihStr = info.event.startStr || '';
-                                const baslik = info.event.title || 'Hatirlatma';
-                                const aciklama = info.event.extendedProps.aciklama || '';
-                                // Tarih formatını Türkçeleştir
-                                let tarihGoster = tarihStr;
-                                if (tarihStr.length === 10) {
-                                    const [yil, ay, gun] = tarihStr.split('-');
-                                    tarihGoster = gun + '.' + ay + '.' + yil;
-                                }
-                                var popoverBaslik = document.getElementById('popoverBaslik');
-                                var popoverTitle = document.getElementById('popoverTitle');
-                                var popoverAciklama = document.getElementById('popoverAciklama');
+                            popoverLeft = padding;
+                        }
+                        // Alttan taşarsa üste çıkar
+                        if (popoverTop + popoverRect.height > window.innerHeight - padding) {
+                            popoverTop = rect.top - popoverRect.height - padding;
+                        }
+                        popover.style.left = popoverLeft + 'px';
+                        popover.style.top = popoverTop + 'px';
+                    }, 0);
+                } else {
+                    // Diğer event tiplerine tıklandığında alert göster
+                    const detay = info.event.extendedProps.detay || '-';
+                    alert('Tip: ' + tip + '\n' + 'Başlık: ' + info.event.title + '\n' + 'Detay: ' + detay);
+                }
                                 var popover = document.getElementById('hatirlatmaPopover');
                                 if (popoverBaslik && popoverTitle && popoverAciklama && popover) {
                                     popoverBaslik.textContent = tarihGoster + ' Hatırlatma';
