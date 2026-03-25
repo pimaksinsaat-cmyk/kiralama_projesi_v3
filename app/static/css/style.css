@@ -228,4 +228,25 @@
         -webkit-user-select: none !important;
         user-select: none !important;
     }
+/* HAFTA SONLARINI BELİRGİNLEŞTİR (Uçuk Mavi) - Baş Mühendis Ayarı */
     
+    /* 1. Takvim içindeki Cumartesi (6) ve Pazar (0) hücrelerini boya */
+    .fc-daygrid-day[data-dow="6"], 
+    .fc-daygrid-day[data-dow="0"] {
+        background-color: #f0f7ff !important; /* En uçuk, en temiz mavi */
+    }
+
+    /* 2. Üstteki gün başlıklarını (Cmt-Paz) da aynı tonda boya ki sütun bütünlüğü olsun */
+    .fc-col-header-cell[data-dow="6"], 
+    .fc-col-header-cell[data-dow="0"] {
+        background-color: #e6f2ff !important; /* Başlık bir tık daha belirgin mavi */
+    }
+
+    /* 3. Liste görünümünde (listMonth) hafta sonu etiketlerini boya */
+    .fc-list-day-side[data-dow="6"], 
+    .fc-list-day-side[data-dow="0"],
+    .fc-list-day-text[data-dow="6"], 
+    .fc-list-day-text[data-dow="0"] {
+        color: #0056b3 !important; /* Hafta sonu yazılarını mavi yap */
+        font-weight: bold;
+    }
