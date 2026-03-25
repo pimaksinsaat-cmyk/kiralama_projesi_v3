@@ -55,7 +55,6 @@
 <div class="card shadow-sm mb-4 bg-light border-0">
     <div class="card-body p-3">
         <form method="GET" action="{{ url_for('nakliyeler.index') }}" class="row g-3 align-items-end" id="nakliye-filtre-form">
-            <input type="hidden" name="per_page" value="{{ per_page }}">
             <div class="col-md-2">
                 <label class="form-label small fw-bold text-muted mb-1">Başlangıç</label>
                 <input type="date" name="baslangic" id="nakliye-baslangic" class="form-control form-control-sm" value="{{ baslangic or '' }}">
@@ -94,6 +93,7 @@
             </div>
             <div class="col-12">
                 <div class="d-flex flex-wrap gap-2 pt-1">
+                    <button type="button" class="btn btn-outline-primary btn-sm hizli-tarih-btn" data-aralik="bugun">Bugün</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm hizli-tarih-btn" data-gun="30">30 gün</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm hizli-tarih-btn" data-gun="60">60 gün</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm hizli-tarih-btn" data-gun="90">90 gün</button>
@@ -115,6 +115,7 @@
             <table class="table table-hover table-striped align-middle mb-0">
                 <thead class="table-dark">
                     <tr>
+                        <th style="width:4%;">#</th>
                         <th class="ps-3">Tarih</th>
                         <th>Müşteri Firma</th>
                         <th>Güzergah / Açıklama</th>
@@ -133,6 +134,7 @@
                             data-islendi="{{ '1' if nakliye.cari_islendi_mi else '0' }}"
                             data-kiralama="{{ '1' if nakliye.kiralama_id else '0' }}">
                             
+                            <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
                             <td class="ps-3">{{ nakliye.tarih.strftime('%d.%m.%Y') }}</td>
                             
                             <td>
@@ -312,16 +314,20 @@
                 const bitisTarihi = new Date(bugun.getFullYear(), bugun.getMonth(), bugun.getDate());
                 let baslangicTarihi;
 
-                if (this.dataset.aralik === 'yilbasi') {
+                if (this.dataset.aralik === 'bugun') {
+                    baslangicInput.value = formatDate(bugun);
+                    bitisInput.value = formatDate(bugun);
+                } else if (this.dataset.aralik === 'yilbasi') {
                     baslangicTarihi = new Date(bitisTarihi.getFullYear(), 0, 1);
+                    baslangicInput.value = formatDate(baslangicTarihi);
+                    bitisInput.value = formatDate(bitisTarihi);
                 } else {
                     const gunSayisi = parseInt(this.dataset.gun || '0', 10);
                     baslangicTarihi = new Date(bitisTarihi);
                     baslangicTarihi.setDate(baslangicTarihi.getDate() - gunSayisi);
+                    baslangicInput.value = formatDate(baslangicTarihi);
+                    bitisInput.value = formatDate(bitisTarihi);
                 }
-
-                baslangicInput.value = formatDate(baslangicTarihi);
-                bitisInput.value = formatDate(bitisTarihi);
                 filtreForm.submit();
             });
         });

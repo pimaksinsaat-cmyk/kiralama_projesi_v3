@@ -11,13 +11,10 @@
 </style>
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2><i class="fas fa-truck-moving text-primary"></i> Nakliye Araç Parkı</h2>
+        <h2><i class="fas fa-truck-moving text-primary"></i> Araç Parkı</h2>
         <div class="d-flex gap-2">
             <a href="{{ url_for('araclar.ekle') }}" class="btn btn-success shadow-sm">
                 <i class="fas fa-plus"></i> Yeni Araç Ekle
-            </a>
-            <a href="{{ url_for('nakliyeler.index') }}" class="btn btn-outline-secondary shadow-sm">
-                <i class="fas fa-route"></i> Nakliye Seferleri
             </a>
         </div>
     </div>
@@ -38,9 +35,10 @@
                         </tr>
                     </thead>
                     <tbody>
+                        {% set start = (pagination.page - 1) * pagination.per_page %}
                         {% for arac in araclar %}
                         <tr>
-                            <td class="align-middle text-muted small">{{ loop.index }}</td>
+                            <td class="align-middle text-muted small">{{ start + loop.index }}</td>
                             <td class="align-middle fw-bold">
                                 <span class="badge bg-light text-dark border p-2" style="font-size: 1rem;">
                                     {{ arac.plaka }}

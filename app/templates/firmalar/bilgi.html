@@ -120,6 +120,7 @@
                     <table class="table table-hover table-striped table-bordered table-sm mb-0">
                         <thead class="table-light">
                             <tr>
+                                <th style="width: 5%;">#</th>
                                 <th style="width: 100px;">Tarih</th>
                                 <th>İşlem Türü</th>
                                 <th>Açıklama</th>
@@ -129,19 +130,18 @@
                             </tr>
                         </thead>
                         <tbody>
+                            {% set start = (hareket_pagination.page - 1) * hareket_pagination.per_page %}
                             {% for islem in hareketler %}
                             {% set is_kiralama = (islem.tur == 'Kiralama' and islem.ozel_id) %}
                             {% set is_nakliye = (islem.tur == 'Nakliye' and islem.ozel_id) %}
-
                             <tr class="context-row"
                                 data-id="{{ islem.id }}" 
                                 data-type="{% if is_kiralama %}kiralama{% elif is_nakliye %}nakliye{% else %}{{ islem.tur_tipi.lower() }}{% endif %}"
                                 data-ozel-id="{{ islem.ozel_id or '' }}" 
                                 data-desc="{{ islem.aciklama }}" 
                                 style="cursor: context-menu;">
-
+                                <td>{{ start + loop.index }}</td>
                                 <td>{{ islem.tarih.strftime('%d.%m.%Y') if islem.tarih else '-' }}</td>
-                                
                                 <td>
                                     {% if is_kiralama %}
                                         <span class="badge bg-warning text-dark"><i class="fa fa-key"></i> Kiralama</span>
@@ -153,26 +153,22 @@
                                         <span class="badge bg-success"><i class="fa fa-money-bill"></i> {{ islem.tur }}</span>
                                     {% endif %}
                                 </td>
-
                                 <td>
                                     {{ islem.aciklama }}
                                     {% if islem.belge_no %}
                                         <br><small class="text-muted">No: {{ islem.belge_no }}</small>
                                     {% endif %}
                                 </td>
-
                                 <td class="text-end text-danger">
                                     {% if islem.borc and islem.borc > 0 %}
                                         {{ "{:,.2f}".format(islem.borc).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     {% else %}-{% endif %}
                                 </td>
-
                                 <td class="text-end text-success">
                                     {% if islem.alacak and islem.alacak > 0 %}
                                         {{ "{:,.2f}".format(islem.alacak).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     {% else %}-{% endif %}
                                 </td>
-
                                 <td class="text-end fw-bold bg-light">
                                     {{ "{:,.2f}".format(islem.kumulatif_bakiye).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                 </td>
@@ -189,8 +185,8 @@
                         <input type="hidden" name="kiralama_per_page" value="{{ kiralama_per_page }}">
                         <label class="small text-muted mb-0">Sayfa başına</label>
                         <select name="hareket_per_page" class="form-select form-select-sm" style="max-width:130px;" onchange="this.form.submit()">
-                            <option value="10"  {{ 'selected' if hareket_per_page == 10 else '' }}>10</option>
-                            <option value="20"  {{ 'selected' if hareket_per_page == 20 else '' }}>20</option>
+                            <option value="10"  {{ 'selected' if hareket_per_page == 10 or not hareket_per_page else '' }}>10</option>
+                            <option value="25"  {{ 'selected' if hareket_per_page == 25 else '' }}>25</option>
                             <option value="50"  {{ 'selected' if hareket_per_page == 50 else '' }}>50</option>
                             <option value="100" {{ 'selected' if hareket_per_page == 100 else '' }}>100</option>
                         </select>
@@ -225,6 +221,7 @@
                      <table class="table table-hover align-middle">
                         <thead class="table-light">
                             <tr>
+                                <th style="width: 5%;">#</th>
                                 <th style="width: 15%;">Form No</th>
                                 <th style="width: 55%;">Ekipmanlar ve Durumları</th>
                                 <th style="width: 20%;">Genel Durum</th>
@@ -232,8 +229,10 @@
                             </tr>
                         </thead>
                         <tbody>
+                            {% set start = (kiralama_pagination.page - 1) * kiralama_pagination.per_page %}
                             {% for kiralama in kiralamalar_sayfa %}
                             <tr>
+                                <td>{{ start + loop.index }}</td>
                                 <td>
                                     <a href="{{ url_for('kiralama.duzenle', kiralama_id=kiralama.id) }}">
                                         <strong>{{ kiralama.kiralama_form_no or 'No Belirtilmemiş' }}</strong>
@@ -302,7 +301,7 @@
                         <label class="small text-muted mb-0">Sayfa başına</label>
                         <select name="kiralama_per_page" class="form-select form-select-sm" style="max-width:130px;" onchange="this.form.submit()">
                             <option value="10"  {{ 'selected' if kiralama_per_page == 10 else '' }}>10</option>
-                            <option value="20"  {{ 'selected' if kiralama_per_page == 20 else '' }}>20</option>
+                            <option value="25"  {{ 'selected' if kiralama_per_page == 25 else '' }}>25</option>
                             <option value="50"  {{ 'selected' if kiralama_per_page == 50 else '' }}>50</option>
                             <option value="100" {{ 'selected' if kiralama_per_page == 100 else '' }}>100</option>
                         </select>

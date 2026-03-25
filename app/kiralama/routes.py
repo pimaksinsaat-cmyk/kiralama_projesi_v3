@@ -134,9 +134,9 @@ def index():
     """Kiralama ana listesi ve arama."""
     try:
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        if per_page not in {10, 20, 50, 100}:
-            per_page = 20
+        per_page = request.args.get('per_page', 10, type=int)
+        if per_page not in {10, 25, 50, 100}:
+            per_page = 10
         q = request.args.get('q', '', type=str)
         
         query = Kiralama.query.options(
@@ -187,7 +187,7 @@ def index():
     except Exception as e:
         current_app.logger.error(f"Kiralama Liste Yükleme Hatası: {str(e)}")
         flash(f"Liste yüklenirken bir hata oluştu.", "danger")
-        return render_template('kiralama/index.html', kiralamalar=[], pagination=None, per_page=20, q='', kurlar={}, today=date.today(), subeler=[], nakliye_araclari=[], nakliye_tedarikci_listesi=[], recently_returned_kalem_ids=set())
+        return render_template('kiralama/index.html', kiralamalar=[], pagination=None, per_page=25, q='', kurlar={}, today=date.today(), subeler=[], nakliye_araclari=[], nakliye_tedarikci_listesi=[], recently_returned_kalem_ids=set())
 
 @kiralama_bp.route('/ekle', methods=['GET', 'POST'])
 @login_required

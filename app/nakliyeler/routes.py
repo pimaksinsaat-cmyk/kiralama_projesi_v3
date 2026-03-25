@@ -44,8 +44,8 @@ def index():
     # Filtreleme parametrelerini yakala
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    if per_page not in {10, 20, 50, 100}:
-        per_page = 20
+    if per_page not in {10, 25, 50, 100}:
+        per_page = 10
 
     bugun = date.today()
     varsayilan_baslangic = (bugun - timedelta(days=15)).isoformat()

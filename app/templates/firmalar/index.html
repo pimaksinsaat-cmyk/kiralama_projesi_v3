@@ -134,6 +134,7 @@
         <table>
             <thead>
                 <tr>
+                    <th style="width: 4%;">#</th>
                     <th style="width: 22%;">
                         Firma Ünvanı
                         <a class="sort-link" href="{{ url_for('firmalar.index', q=q, sort_by='firma_adi', sort_dir='desc' if sort_by == 'firma_adi' and sort_dir == 'asc' else 'asc') }}" title="Firma ünvanına göre sırala">
@@ -194,6 +195,7 @@
                     data-kiralama-url="{{ url_for('kiralama.index', q=firma.firma_adi) }}"
                     data-hakedis-url="{{ url_for('fatura.olustur') }}">
                     
+                    <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
                     <td>
                         <span class="me-2">{{ "🟢" if firma.imza_yetkisi_kontrol_edildi else "🔴" }}</span>
                         <span class="fw-bold">{{ firma.firma_adi }}</span>

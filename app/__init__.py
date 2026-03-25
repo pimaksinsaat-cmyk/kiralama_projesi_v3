@@ -26,7 +26,9 @@ def create_app(config_class=Config):
 
     # extensions'dan gelen nesneleri başlatıyoruz
     db.init_app(app)
-    migrate.init_app(app, db)
+    # Sadece ana uygulama çalışırken migrate başlatılsın, scriptlerde gerek yok
+    if os.environ.get("FLASK_RUN_FROM_CLI") == "true":
+        migrate.init_app(app, db)
     
     # CSRF uygulamasını başlat
     csrf.init_app(app)
@@ -125,17 +127,19 @@ def create_app(config_class=Config):
     from app.ayarlar import ayarlar_bp
     app.register_blueprint(ayarlar_bp, url_prefix='/ayarlar')
     
-    with app.app_context():
-        from alembic.util.exc import CommandError
-        from flask_migrate import stamp, upgrade
+    # Sadece ana uygulama çalışırken migrate işlemleri otomatik yapılsın
+    if os.environ.get("FLASK_RUN_FROM_CLI") == "true":
+        with app.app_context():
+            from alembic.util.exc import CommandError
+            from flask_migrate import stamp, upgrade
 
-        try:
-            upgrade()
-        except CommandError as exc:
-            # Eski/silinmis bir revizyon kaydi varsa uygulama acilisini kilitleme.
-            if "Can't locate revision identified by" in str(exc):
-                app.logger.warning(
-                    "Alembic revizyonu bulunamadi. Mevcut DB surumu head olarak damgalaniyor: %s",
+            try:
+                upgrade()
+            except CommandError as exc:
+                # Eski/silinmis bir revizyon kaydi varsa uygulama acilisini kilitleme.
+                if "Can't locate revision identified by" in str(exc):
+                    app.logger.warning(
+                        "Alembic revizyonu bulunamadi. Mevcut DB surumu head olarak damgalaniyor: %s",
                     exc,
                 )
                 stamp(revision='head')

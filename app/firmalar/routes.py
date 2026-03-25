@@ -78,7 +78,7 @@ def _to_bool(value, default=False):
 def index():
     try:
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 50, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
         if per_page not in {10, 25, 50, 100}:
             per_page = 50
         q = request.args.get('q', '', type=str)
@@ -236,13 +236,13 @@ def bilgi(id):
     try:
         tab = request.args.get('tab', 'hareket')
 
-        hareket_per_page = request.args.get('hareket_per_page', 20, type=int)
+        hareket_per_page = request.args.get('hareket_per_page', 10, type=int)
         hareket_page     = request.args.get('hareket_page', 1, type=int)
         kiralama_per_page = request.args.get('kiralama_per_page', 10, type=int)
         kiralama_page     = request.args.get('kiralama_page', 1, type=int)
 
-        allowed_pp = {10, 20, 25, 50, 100}
-        if hareket_per_page not in allowed_pp:   hareket_per_page = 20
+        allowed_pp = {10, 25, 50, 100}
+        if hareket_per_page not in allowed_pp:   hareket_per_page = 10
         if kiralama_per_page not in allowed_pp:  kiralama_per_page = 10
 
         finans_verileri = FirmaService.get_financial_summary(id)
