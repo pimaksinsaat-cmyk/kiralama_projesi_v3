@@ -64,3 +64,4 @@ class FirmaForm(BaseForm): # FlaskForm yerine BaseForm'dan miras alıyoruz
 class SozlesmeNoDuzeltForm(BaseForm):
     firma_id = HiddenField('Firma ID', validators=[DataRequired()])
     sozlesme_no = StringField('Yeni Sözleşme No', validators=[DataRequired(), Length(max=50)])
+    sozlesme_tarihi = TRDateField('Sözleşme Tarihi', validators=[Optional()])

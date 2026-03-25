@@ -482,6 +482,7 @@ def sozlesme_no_duzelt():
         return redirect(url_for('firmalar.index'))
     firma_id = int(form.firma_id.data)
     yeni_sozlesme_no = form.sozlesme_no.data.strip()
+    yeni_sozlesme_tarihi = form.sozlesme_tarihi.data
     firma = Firma.query.get(firma_id)
     if not firma:
         flash('Firma bulunamadı.', 'danger')
@@ -493,6 +494,8 @@ def sozlesme_no_duzelt():
             flash('Bu sözleşme numarası başka bir firmada zaten kullanılıyor.', 'danger')
             return redirect(url_for('firmalar.index'))
     firma.sozlesme_no = yeni_sozlesme_no
+    if yeni_sozlesme_tarihi:
+        firma.sozlesme_tarihi = yeni_sozlesme_tarihi
     db.session.commit()
-    flash('Sözleşme numarası başarıyla güncellendi.', 'success')
+    flash('Sözleşme numarası ve tarihi başarıyla güncellendi.', 'success')
     return redirect(url_for('firmalar.index'))

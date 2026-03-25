@@ -184,6 +184,7 @@
                     data-telefon="{{ firma.telefon or '' }}"
                     data-vergi-no="{{ firma.vergi_no or '' }}"
                     data-sozlesme-no="{{ firma.sozlesme_no or '' }}"
+                    data-sozlesme-tarihi="{{ firma.sozlesme_tarihi.strftime('%Y-%m-%d') if firma.sozlesme_tarihi else '' }}"
                     data-klasor-adi="{{ firma.bulut_klasor_adi or '' }}"
                     data-bilgi-url="{{ url_for('firmalar.bilgi', id=firma.id) }}"
                     data-duzenle-url="{{ url_for('firmalar.duzelt', id=firma.id) }}"
@@ -359,6 +360,10 @@
                         <label for="sozlesmeNoDuzeltInput" class="form-label">Yeni Sözleşme No</label>
                         {{ form.sozlesme_no(class_='form-control', id='sozlesmeNoDuzeltInput', required=True, maxlength=50) }}
                     </div>
+                    <div class="mb-3">
+                        <label for="sozlesmeTarihiDuzeltInput" class="form-label">Sözleşme Tarihi</label>
+                        {{ form.sozlesme_tarihi(class_='form-control', id='sozlesmeTarihiDuzeltInput') }}
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -405,6 +410,7 @@ document.addEventListener('DOMContentLoaded', function() {
             vergi: row.dataset.vergiNo,
             ps: row.dataset.sozlesmeNo,
             klasor: row.dataset.klasorAdi,
+            sozlesmeTarihi: row.dataset.sozlesmeTarihi,
             urls: {
                 bilgi: row.dataset.bilgiUrl,
                 hakedis: row.dataset.hakedisUrl,
@@ -520,6 +526,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const sozlesmeNoInput = document.querySelector('input[name="sozlesme_no"]');
             if (firmaIdInput) firmaIdInput.value = activeData.id;
             if (sozlesmeNoInput) sozlesmeNoInput.value = activeData.ps || '';
+            // Sözleşme tarihi inputunu doldur
+            const sozlesmeTarihiInput = document.querySelector('input[name="sozlesme_tarihi"]');
+            if (sozlesmeTarihiInput) sozlesmeTarihiInput.value = activeData.sozlesmeTarihi || '';
             var modal = new bootstrap.Modal(document.getElementById('sozlesmeNoDuzeltModal'));
             modal.show();
         });
