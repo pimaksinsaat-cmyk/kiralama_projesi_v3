@@ -205,3 +205,27 @@
         -ms-user-select: none;       /* IE10+/Edge */
         user-select: none;           /* Standart - Metin seçimini engeller */
     }
+/* iPhone'un kendi menüsünü ve büyütecini KÖKTEN kapatan kalkan */
+    .kiralama-satiri, 
+    .kiralama-satiri *, 
+    .kalem-listesi-item, 
+    .kalem-listesi-item * {
+        -webkit-touch-callout: none !important; /* iPhone sağ tık menüsünü engeller */
+        -webkit-user-select: none !important;    /* Metin seçimini engeller */
+        user-select: none !important;
+    }
+/* iPhone'un kendi menüsünü her noktada kapatır */
+    .firma-satiri, 
+    .firma-satiri * {
+        -webkit-touch-callout: none !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+    }
+/* Filo için iPhone kalkanı */
+    .makine-satiri, 
+    .makine-satiri * {
+        -webkit-touch-callout: none !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+    }
+    

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Takvim ve Hatirlatmalar{% endblock %}
+{% block title %}Takvim ve Hatırlatmalar{% endblock %}
 
 {% block head %}
 {{ super() }}
@@ -21,300 +21,247 @@
         font-size: 0.9rem;
     }
     .legend-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 999px;
-        display: inline-block;
+        width: 12px; height: 12px; border-radius: 999px; display: inline-block;
     }
-    .fc .fc-toolbar-title {
-        font-size: 1.15rem;
-        font-weight: 700;
-    }
+    .fc .fc-toolbar-title { font-size: 1.15rem; font-weight: 700; }
+    
+    /* Sağ Tık Menüsü */
     .reminder-context-menu {
-        position: fixed;
-        z-index: 2000;
-        min-width: 200px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        overflow: hidden;
-        display: none;
+        position: fixed; z-index: 4000; min-width: 200px; background: #fff;
+        border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        display: none; overflow: hidden;
     }
     .reminder-context-menu button {
-        width: 100%;
-        border: none;
-        background: transparent;
-        text-align: left;
-        padding: 10px 12px;
-        font-size: 0.92rem;
+        width: 100%; border: none; background: transparent;
+        text-align: left; padding: 12px 16px; font-size: 0.95rem; font-weight: 600; cursor: pointer;
     }
-    .reminder-context-menu button:hover {
-        background: #fff1f2;
-        color: #b91c1c;
+    .reminder-context-menu button:hover { background: #fff1f2; color: #b91c1c; }
+
+    /* iPhone & Masaüstü Kalkanı */
+    .fc-event, .fc-event * {
+        -webkit-touch-callout: none !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
     }
-    /* Hafta sonlarini belirginlestir - data-dow: 5=Cumartesi, 6=Pazar */
-    .fc-daygrid-day[data-dow="5"],
-    .fc-daygrid-day[data-dow="6"] {
-        background-color: #ecf0f1 !important;
-    }
-    .fc-timegrid-slot[data-dow="5"],
-    .fc-timegrid-slot[data-dow="6"] {
-        background-color: #ecf0f1 !important;
-    }
-    .fc-col-header.fc-day[data-dow="5"],
-    .fc-col-header.fc-day[data-dow="6"] {
-        background-color: #d0d7e0 !important;
-        font-weight: 600;
-    }
-    /* Hatirlatma popover */
+
+    /* Hatırlatma Popover */
     .hatirlatma-popover {
-        position: fixed;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        z-index: 2100;
-        min-width: 280px;
-        display: none;
-        padding: 0;
-        max-width: 400px;
-        top: 0;
-        left: 0;
+        position: fixed; background: white; border: 1px solid #e5e7eb;
+        border-radius: 10px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        z-index: 3500; min-width: 300px; display: none; max-width: 350px;
     }
     .hatirlatma-popover-header {
-        background: linear-gradient(135deg, #10b981, #059669);
-        color: white;
-        padding: 12px 16px;
-        border-radius: 8px 8px 0 0;
-        font-weight: 600;
-        font-size: 0.95rem;
-        border-bottom: 2px solid #047857;
+        color: white; padding: 12px 14px; border-radius: 10px 10px 0 0;
+        font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;
     }
-    .hatirlatma-popover-body {
-        padding: 14px 16px;
-        color: #374151;
-        font-size: 0.9rem;
-    }
-    .hatirlatma-popover-baslik {
-        font-weight: 600;
-        color: #1f2937;
-        margin-bottom: 8px;
-        font-size: 0.95rem;
-    }
-    .hatirlatma-popover-aciklama {
-        color: #6b7280;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
+    .hatirlatma-popover-body { padding: 15px 14px; color: #374151; font-size: 0.9rem; }
+    
+    /* Dinamik Renkler */
+    .bg-kiralama { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .bg-sigorta { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    .bg-muayene { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .bg-hatirlatma { background: linear-gradient(135deg, #10b981, #059669); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid px-0">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h2 class="mb-1">Takvim</h2>
-            <p class="text-muted mb-0">Yaklaşan kiralama bitişleri, araç sigorta/muayene tarihleri ve hatırlatmalar</p>
+            <h2 class="mb-0 fw-bold">Takvim</h2>
+            <small class="text-muted">Tüm operasyonel süreçlerin merkezi takibi</small>
         </div>
-        <div>
-            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#hatirlatmaModal">
-                <i class="fas fa-bell me-1"></i> Hatırlatma Ekle
-            </button>
-        </div>
+        <button class="btn btn-success btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#hatirlatmaModal">
+            <i class="fas fa-plus me-1"></i> Hatırlatma Ekle
+        </button>
     </div>
-    <div class="mb-2">
-        <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span>Kiralama Bitiş</span>
-        <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span>Sigorta</span>
-        <span class="legend-item"><span class="legend-dot" style="background:#2563eb;"></span>Muayene</span>
-        <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span>Hatırlatma</span>
+    
+    <div class="mb-3">
+        <span class="legend-item"><span class="legend-dot bg-kiralama" style="background:#f59e0b;"></span>Kiralama Bitiş</span>
+        <span class="legend-item"><span class="legend-dot bg-sigorta" style="background:#ef4444;"></span>Sigorta</span>
+        <span class="legend-item"><span class="legend-dot bg-muayene" style="background:#2563eb;"></span>Muayene</span>
+        <span class="legend-item"><span class="legend-dot bg-hatirlatma" style="background:#10b981;"></span>Hatırlatma</span>
     </div>
-    <div class="calendar-shell" style="display:block;">
-        <div id="takvim" style="min-height: 500px;"></div>
+
+    <div class="calendar-shell">
+        <div id="takvim"></div>
     </div>
 </div>
 
-<div class="modal fade" id="hatirlatmaModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
+<div class="modal fade" id="hatirlatmaModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
             <form method="POST" action="{{ url_for('takvim.takvim_hatirlatma_ekle') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="modal-header">
-                    <h5 class="modal-title">Hatirlatma Ekle</h5>
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title fw-bold">Yeni Hatırlatma</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Tarih</label>
+                        <label class="form-label small fw-bold">Tarih</label>
                         <input type="date" class="form-control" name="tarih" id="hatirlatmaTarih" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Baslik</label>
-                        <input type="text" class="form-control" name="baslik" maxlength="150" placeholder="Orn: Musteri aransin" required>
+                        <label class="form-label small fw-bold">Başlık</label>
+                        <input type="text" class="form-control" name="baslik" placeholder="Hatırlatılacak konu..." required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Aciklama</label>
-                        <textarea class="form-control" name="aciklama" rows="3" placeholder="Opsiyonel detay"></textarea>
+                        <label class="form-label small fw-bold">Açıklama</label>
+                        <textarea class="form-control" name="aciklama" rows="3"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Vazgec</button>
-                    <button type="submit" class="btn btn-success">Kaydet</button>
+                <div class="modal-footer border-0">
+                    <button type="submit" class="btn btn-success px-4 fw-bold">KAYDET</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<form id="hatirlatmaSilForm" method="POST" style="display:none;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-</form>
+<form id="hatirlatmaSilForm" method="POST" style="display:none;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 
-<div id="hatirlatmaContextMenu" class="reminder-context-menu" aria-hidden="true">
-    <button type="button" id="hatirlatmaSilBtn"><i class="fas fa-trash-alt me-2"></i>Hatirlatmayi Sil</button>
+<div id="hatirlatmaContextMenu" class="reminder-context-menu">
+    <button type="button" id="hatirlatmaSilBtn" class="text-danger">
+        <i class="fas fa-trash-alt me-2"></i>Bu Hatırlatmayı Sil
+    </button>
 </div>
 
-<div id="hatirlatmaPopover" class="hatirlatma-popover" style="display:none;">
-    <div class="hatirlatma-popover-header" id="popoverBaslik"></div>
+<div id="hatirlatmaPopover" class="hatirlatma-popover">
+    <div class="hatirlatma-popover-header" id="popoverHeader">
+        <i id="popoverIcon" class="fas fa-info-circle"></i>
+        <span id="popoverHeaderText">Bilgi</span>
+    </div>
     <div class="hatirlatma-popover-body">
-        <div class="hatirlatma-popover-baslik" id="popoverTitle"></div>
-        <div class="hatirlatma-popover-aciklama" id="popoverAciklama"></div>
+        <div class="fw-bold text-dark mb-2" id="popoverTitle" style="font-size: 1rem;"></div>
+        <div id="popoverContent" class="text-muted" style="line-height: 1.4;"></div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const calendarEl = document.getElementById('takvim');
-        const tarihInput = document.getElementById('hatirlatmaTarih');
-        const contextMenu = document.getElementById('hatirlatmaContextMenu');
-        const deleteBtn = document.getElementById('hatirlatmaSilBtn');
-        const deleteForm = document.getElementById('hatirlatmaSilForm');
-        const popover = document.getElementById('hatirlatmaPopover');
-        const popoverBaslik = document.getElementById('popoverBaslik');
-        const popoverTitle = document.getElementById('popoverTitle');
-        const popoverAciklama = document.getElementById('popoverAciklama');
-        let activeHatirlatmaId = null;
+document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('takvim');
+    const contextMenu = document.getElementById('hatirlatmaContextMenu');
+    const popover = document.getElementById('hatirlatmaPopover');
+    const popoverHeader = document.getElementById('popoverHeader');
+    const popoverIcon = document.getElementById('popoverIcon');
+    const silForm = document.getElementById('hatirlatmaSilForm');
+    let activeReminderId = null;
 
-        function getTodayIso() {
-            const now = new Date();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            return now.getFullYear() + '-' + month + '-' + day;
-        }
+    function closeAll() {
+        contextMenu.style.display = 'none';
+        popover.style.display = 'none';
+    }
 
-        if (!tarihInput.value) {
-            tarihInput.value = getTodayIso();
-        }
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'tr',
+        firstDay: 1,
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+        buttonText: { today: 'Bugün', month: 'Ay', list: 'Liste' },
+        events: "{{ url_for('takvim.takvim_events') }}",
 
-        function hideContextMenu() {
-            if (!contextMenu) {
-                return;
-            }
-            contextMenu.style.display = 'none';
-            contextMenu.setAttribute('aria-hidden', 'true');
-            activeHatirlatmaId = null;
-        }
+        dateClick: function(info) {
+            closeAll();
+            document.getElementById('hatirlatmaTarih').value = info.dateStr;
+            new bootstrap.Modal(document.getElementById('hatirlatmaModal')).show();
+        },
 
-        function hidePopover() {
-            if (!popover) {
-                return;
-            }
-            popover.style.display = 'none';
-        }
+        eventDidMount: function(info) {
+            const el = info.el;
+            const eventObj = info.event;
 
-        function showContextMenu(x, y, hatirlatmaId) {
-            if (!contextMenu) {
-                return;
-            }
-            activeHatirlatmaId = hatirlatmaId;
-            contextMenu.style.left = x + 'px';
-            contextMenu.style.top = y + 'px';
-            contextMenu.style.display = 'block';
-            contextMenu.setAttribute('aria-hidden', 'false');
-        }
-
-        const calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            locale: 'tr',
-            height: 'auto',
-            firstDay: 1,
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,listMonth'
-            },
-            buttonText: {
-                today: 'Bugun',
-                month: 'Ay',
-                week: 'Hafta',
-                list: 'Liste'
-            },
-            events: "{{ url_for('takvim.takvim_events') }}",
-            dateClick: function (info) {
-            events: "{{ url_for('takvim.takvim_events') }}",
-            dateClick: function (info) {
-                tarihInput.value = info.dateStr;
-                const modal = new bootstrap.Modal(document.getElementById('hatirlatmaModal'));
-                modal.show();
-            },
-            eventClick: function (info) {
-                hideContextMenu();
-                const tip = info.event.extendedProps.type || 'kayit';
-                if (tip === 'hatirlatma') {
-                    const tarihStr = info.event.startStr || '';
-                    const baslik = info.event.title || 'Hatirlatma';
-                    const aciklama = info.event.extendedProps.aciklama || '';
-                    let tarihGoster = tarihStr;
-                    if (tarihStr.length === 10) {
-                        const [yil, ay, gun] = tarihStr.split('-');
-                        tarihGoster = gun + '.' + ay + '.' + yil;
-                    }
-                    popoverBaslik.textContent = tarihGoster + ' Hatirlatma';
-                    popoverTitle.textContent = baslik;
-                    popoverAciklama.textContent = aciklama || '(Açıklama yok)';
-                    const rect = info.el.getBoundingClientRect();
-                    popover.style.display = 'block';
-                    popover.style.position = 'fixed';
-                    setTimeout(function() {
-                        const popoverRect = popover.getBoundingClientRect();
-                        const padding = 10;
-                        let popoverLeft = rect.left;
-                        let popoverTop = rect.bottom + padding;
-                        if (popoverLeft + popoverRect.width > window.innerWidth - padding) {
-                            popoverLeft = window.innerWidth - popoverRect.width - padding;
-                        }
-                        if (popoverLeft < padding) {
-                            popoverLeft = padding;
-                        }
-                        if (popoverTop + popoverRect.height > window.innerHeight - padding) {
-                            popoverTop = rect.top - popoverRect.height - padding;
-                        }
-                        popover.style.left = popoverLeft + 'px';
-                        popover.style.top = popoverTop + 'px';
-                    }, 0);
-                } else {
-                    const detay = info.event.extendedProps.detay || '-';
-                    alert('Tip: ' + tip + '\n' + 'Başlık: ' + info.event.title + '\n' + 'Detay: ' + detay);
+            el.addEventListener('contextmenu', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                if (eventObj.extendedProps.type === 'hatirlatma') {
+                    closeAll();
+                    activeReminderId = eventObj.id;
+                    contextMenu.style.left = e.pageX + 'px';
+                    contextMenu.style.top = e.pageY + 'px';
+                    contextMenu.style.display = 'block';
                 }
-            }
-            // Popover'a tıklanmadıysa kapat
-            if (!popover.contains(e.target)) {
-                hidePopover();
-            }
-            hideContextMenu();
-        });
+                return false;
+            });
 
-        document.addEventListener('scroll', function () {
-            hideContextMenu();
-            hidePopover();
-        }, true);
+            let t;
+            el.addEventListener('touchstart', function(e) {
+                if (eventObj.extendedProps.type === 'hatirlatma') {
+                    t = setTimeout(() => {
+                        if (navigator.vibrate) navigator.vibrate(50);
+                        closeAll();
+                        activeReminderId = eventObj.id;
+                        contextMenu.style.left = e.touches[0].pageX + 'px';
+                        contextMenu.style.top = e.touches[0].pageY + 'px';
+                        contextMenu.style.display = 'block';
+                    }, 700);
+                }
+            }, { passive: true });
+            el.addEventListener('touchend', () => clearTimeout(t));
+        },
 
-        calendar.render();
+        eventClick: function(info) {
+            info.jsEvent.preventDefault();
+            info.jsEvent.stopPropagation();
+            
+            const currentDisplay = popover.style.display;
+            closeAll();
+            if (currentDisplay === 'block' && activeReminderId === info.event.id) return;
+
+            const props = info.event.extendedProps;
+            activeReminderId = info.event.id;
+
+            // Popover Konfigürasyonu
+            let headerClass = "bg-hatirlatma";
+            let headerTitle = "Hatırlatma";
+            let iconClass = "fa-bell";
+
+            if (props.type === 'kiralama') {
+                headerClass = "bg-kiralama";
+                headerTitle = "Kiralama Bitiş";
+                iconClass = "fa-file-contract";
+            } else if (props.type === 'sigorta') {
+                headerClass = "bg-sigorta";
+                headerTitle = "Sigorta Vadesi";
+                iconClass = "fa-shield-alt";
+            } else if (props.type === 'muayene') {
+                headerClass = "bg-muayene";
+                headerTitle = "Muayene Tarihi";
+                iconClass = "fa-car-check";
+            }
+
+            // Popover İçeriğini Doldur
+            popoverHeader.className = "hatirlatma-popover-header " + headerClass;
+            popoverIcon.className = "fas " + iconClass;
+            document.getElementById('popoverHeaderText').innerText = headerTitle;
+            document.getElementById('popoverTitle').innerText = info.event.title.split(':').pop().trim();
+            document.getElementById('popoverContent').innerText = props.detay || props.aciklama || "Detay belirtilmemiş.";
+            
+            const rect = info.el.getBoundingClientRect();
+            popover.style.display = 'block';
+            
+            let leftPos = rect.left;
+            if (leftPos + 320 > window.innerWidth) leftPos = window.innerWidth - 330;
+            
+            popover.style.left = leftPos + 'px';
+            popover.style.top = (rect.bottom + 8) + 'px';
+        }
     });
+
+    document.getElementById('hatirlatmaSilBtn').onclick = function() {
+        if (activeReminderId && confirm('Bu hatırlatma kalıcı olarak silinecek?')) {
+            silForm.action = "/takvim/hatirlatma/sil/" + activeReminderId;
+            silForm.submit();
+        }
+    };
+
+    document.addEventListener('click', function(e) {
+        if (!contextMenu.contains(e.target) && !popover.contains(e.target)) closeAll();
+    });
+
+    calendar.render();
+});
 </script>
 {% endblock %}
