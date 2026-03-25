@@ -611,23 +611,67 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Menu Click İşlemleri
     document.getElementById('menu-duzenle').onclick = () => { if(state.kUrl) window.location.href = state.kUrl; };
-    // --- DOKUNMATİK VE SAĞ TIK DİNLEYİCİLERİ ---
+    // --- MENÜ AÇILIŞ (FİRMALAR AYARI - iPHONE DOSTU) ---
+    const openFormMenu = (e, row) => {
+        closeModals();
+        state.kUrl = row.dataset.duzenleUrl;
+        state.sUrl = row.dataset.silUrl;
+        state.fNo = row.dataset.formNo;
+        state.csrf = row.dataset.csrfToken;
+        state.rentalId = row.dataset.kiralamaId;
+        
+        document.getElementById('menu-form-title').innerText = state.fNo;
+        const x = e.pageX || (e.touches ? e.touches[0].pageX : 0);
+        const y = e.pageY || (e.touches ? e.touches[0].pageY : 0);
+        contextMenu.style.left = x + 'px';
+        contextMenu.style.top = y + 'px';
+        contextMenu.style.display = 'block';
+    };
+
+    const openItemMenu = (e, item) => {
+        closeModals();
+        state.kId = item.dataset.kalemId;
+        state.eKod = item.dataset.ekipmanKod;
+        state.kCsrf = item.dataset.csrfToken;
+        state.nakliyeSatis = item.dataset.nakliyeSatis || 0;
+        state.donusFaturaEt = item.dataset.donusFaturaEt === '1';
+        
+        const done = item.dataset.sonlandirilmis === '1';
+        document.getElementById('menu-kalem-title').innerText = state.eKod;
+        document.getElementById('menu-degistir').style.display = !done ? 'block' : 'none';
+        document.getElementById('menu-sonlandir').style.display = !done ? 'block' : 'none';
+        document.getElementById('menu-iptal').style.display = done ? 'block' : 'none';
+
+        const x = e.pageX || (e.touches ? e.touches[0].pageX : 0);
+        const y = e.pageY || (e.touches ? e.touches[0].pageY : 0);
+        contextMenuKalem.style.left = x + 'px';
+        contextMenuKalem.style.top = y + 'px';
+        contextMenuKalem.style.display = 'block';
+    };
+
+    // --- OLAY DİNLEYİCİLERİ (iPHONE İÇİN PASSIVE FALSE YAPILDI) ---
     document.querySelectorAll('.kiralama-satiri').forEach(row => {
-        row.addEventListener('contextmenu', (e) => openFormMenu(e, row));
+        row.addEventListener('contextmenu', (e) => { e.preventDefault(); openFormMenu(e, row); });
         let t;
         row.addEventListener('touchstart', (e) => {
-            t = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); openFormMenu(e, row); }, 700);
+            t = setTimeout(() => { 
+                if (navigator.vibrate) navigator.vibrate(50);
+                openFormMenu(e, row);
+            }, 700);
         }, { passive: true });
         row.addEventListener('touchend', () => clearTimeout(t));
         row.addEventListener('touchmove', () => clearTimeout(t));
     });
 
     document.querySelectorAll('.kalem-listesi-item').forEach(item => {
-        item.addEventListener('contextmenu', (e) => openItemMenu(e, item));
+        item.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openItemMenu(e, item); });
         let t;
         item.addEventListener('touchstart', (e) => {
-            e.stopPropagation(); // Satıra sinyal gitmesini engelle
-            t = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); openItemMenu(e, item); }, 700);
+            e.stopPropagation();
+            t = setTimeout(() => { 
+                if (navigator.vibrate) navigator.vibrate(50);
+                openItemMenu(e, item);
+            }, 700);
         }, { passive: true });
         item.addEventListener('touchend', () => clearTimeout(t));
         item.addEventListener('touchmove', () => clearTimeout(t));
