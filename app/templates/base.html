@@ -257,5 +257,38 @@
 
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     {% block scripts %}{% endblock %}
+<script>
+        function bindContextMenuAndLongPress(elements, callback) {
+            elements.forEach(el => {
+                // 1. Masaüstü Sağ Tık Olayı
+                el.addEventListener('contextmenu', function(e) {
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    callback(e.pageX, e.pageY, this);
+                });
+
+                // 2. Mobil Uzun Basma (Long Press) Olayı
+                let pressTimer;
+                el.addEventListener('touchstart', function(e) {
+                    if (e.touches.length === 1) { 
+                        e.stopPropagation(); 
+                        const touch = e.touches[0];
+                        const pageX = touch.pageX;
+                        const pageY = touch.pageY;
+                        
+                        pressTimer = setTimeout(() => {
+                            if (navigator.vibrate) navigator.vibrate(50);
+                            callback(pageX, pageY, this);
+                        }, 500); 
+                    }
+                }, {passive: true});
+
+                // Yanlışlıkla açılmaları iptal et
+                el.addEventListener('touchend', () => clearTimeout(pressTimer));
+                el.addEventListener('touchmove', () => clearTimeout(pressTimer));
+                el.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+            });
+        }
+    </script>
 </body>
 </html>

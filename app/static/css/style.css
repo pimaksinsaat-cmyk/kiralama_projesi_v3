@@ -194,3 +194,14 @@
     .search-form button {
         padding: 10px 25px; /* Butonu da giriş kutusuyla aynı hizaya getirdik */
     }
+/* Mobil Uzun Basma (Sağ Tık) İçin Global Engelleyici Sınıf */
+    .context-menu-hedefi,
+    .table-hover tbody tr, 
+    .kiralama-satiri, 
+    .kalem-listesi-item {
+        -webkit-touch-callout: none; /* iOS Safari'de "Kopyala/Paylaş" yerleşik menüsünü engeller */
+        -webkit-user-select: none;   /* Safari */
+        -moz-user-select: none;      /* Firefox */
+        -ms-user-select: none;       /* IE10+/Edge */
+        user-select: none;           /* Standart - Metin seçimini engeller */
+    }
