@@ -496,8 +496,10 @@ document.addEventListener('DOMContentLoaded', function() {
         e.stopPropagation();
         return false;
     };
-    // Sadece contextmenu'yu engelle
-    document.body.addEventListener('contextmenu', preventNativeContextMenu, { passive: false });
+    // Sadece .kiralama-satiri ve .kalem-listesi-item üzerinde contextmenu'yu engelle
+    document.querySelectorAll('.kiralama-satiri, .kalem-listesi-item').forEach(function(row) {
+        row.addEventListener('contextmenu', preventNativeContextMenu, { passive: false });
+    });
     const contextMenu = document.getElementById('context-menu');
     const contextMenuKalem = document.getElementById('context-menu-kalem');
     const backdrop = document.getElementById('modal-backdrop-sonlandir');
