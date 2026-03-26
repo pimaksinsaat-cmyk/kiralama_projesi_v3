@@ -496,13 +496,8 @@ document.addEventListener('DOMContentLoaded', function() {
         e.stopPropagation();
         return false;
     };
-    // Tüm sayfa ve ana konteynerde contextmenu'yu engelle
+    // Sadece contextmenu'yu engelle
     document.body.addEventListener('contextmenu', preventNativeContextMenu, { passive: false });
-    document.body.addEventListener('touchstart', function(e) {
-        if (e.touches && e.touches.length === 1) {
-            e.preventDefault();
-        }
-    }, { passive: false });
     const contextMenu = document.getElementById('context-menu');
     const contextMenuKalem = document.getElementById('context-menu-kalem');
     const backdrop = document.getElementById('modal-backdrop-sonlandir');
