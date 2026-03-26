@@ -121,12 +121,12 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
-                        <th style="width:4%;">#</th>
+                        <th class="d-none d-lg-table-cell" style="width:4%;">#</th>
                         <th style="width: 120px;">Kod</th>
-                        <th>Marka / Tip</th>
-                        <th>Seri No</th>
-                        <th>Teknik Özellikler</th>
-                        <th>Bulunduğu Şube</th>
+                        <th class="d-none d-lg-table-cell">Marka / Tip</th>
+                        <th class="d-none d-lg-table-cell">Seri No</th>
+                        <th class="d-none d-lg-table-cell">Teknik Özellikler</th>
+                        <th class="d-none d-lg-table-cell">Bulunduğu Şube</th>
                         <th style="width: 200px;">Müşteri / Durum</th>
                         <th style="width: 180px;">Durumu</th>
                     </tr>
@@ -145,28 +145,26 @@
                             data-kiralama-gecmisi-url="{{ url_for('filo.kiralama_gecmisi', ekipman_id=ekipman.id) }}"
                             data-finansal-rapor-url="{{ url_for('filo.finansal_rapor', ekipman_id=ekipman.id) }}"
                             data-csrf-token="{{ csrf_token() }}">
-                            <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                            <td class="d-none d-lg-table-cell">{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
                         
                         <td class="fw-bold text-primary">{{ ekipman.kod }}</td>
-                            <td>
+                            <td class="d-none d-lg-table-cell">
                             <div class="fw-bold">{{ ekipman.marka }}</div>
                             <div class="text-muted small">{{ ekipman.tipi }}</div>
                         </td>
-                        <td class="text-monospace">{{ ekipman.seri_no }}</td>
-                        <td>
+                        <td class="text-monospace d-none d-lg-table-cell">{{ ekipman.seri_no }}</td>
+                        <td class="d-none d-lg-table-cell">
                             <span class="text-slate-600">{{ ekipman.calisma_yuksekligi }}m</span>
                             <span class="mx-1 text-slate-300">|</span>
                             <span class="text-slate-600">{{ ekipman.kaldirma_kapasitesi }}kg</span>
                         </td>
-                        
-                        <td>
+                        <td class="d-none d-lg-table-cell">
                             {% if ekipman.sube %}
                                 <span class="badge badge-status badge-sube"><i class="fas fa-map-marker-alt"></i> {{ ekipman.sube.isim }}</span>
                             {% else %}
                                 <span class="badge badge-status bg-light text-secondary border"><i class="fas fa-question-circle"></i> Merkez (Atanmamış)</span>
                             {% endif %}
                         </td>
-
                         <td>
                             {% if ekipman.calisma_durumu == 'kirada' and ekipman.aktif_kiralama_bilgisi %}
                                 <small class="d-flex align-items-center gap-2">
