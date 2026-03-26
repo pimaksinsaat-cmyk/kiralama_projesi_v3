@@ -182,24 +182,6 @@
                                 <small class="text-muted">-</small>
                             {% endif %}
                         </td>
-                        <td>
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-ellipsis-h"></i> Aksiyonlar
-                                </button>
-                                <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item text-primary fw-bold" href="{{ url_for('kiralama.ekle', ekipman_id=ekipman.id) }}"><i class="fas fa-plus-circle"></i> Hemen Kiraya Ver</a></li>
-                                    <li><a class="dropdown-item text-warning" href="#" onclick="showBakimModal({{ ekipman.id }}, '{{ ekipman.kod }}'); return false;"><i class="fas fa-tools"></i> Bakıma/Servise Al</a></li>
-                                    <li><a class="dropdown-item text-info" href="#" onclick="showSubeModal({{ ekipman.id }}, '{{ ekipman.kod }}'); return false;"><i class="fas fa-exchange-alt"></i> Şube Nakil Yap</a></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="{{ url_for('filo.finansal_rapor', ekipman_id=ekipman.id) }}"><i class="fas fa-chart-line"></i> Finansal Analiz</a></li>
-                                    <li><a class="dropdown-item" href="{{ url_for('filo.kiralama_gecmisi', ekipman_id=ekipman.id) }}"><i class="fas fa-history"></i> Kiralama Geçmişi</a></li>
-                                    <li><a class="dropdown-item" href="{{ url_for('filo.bilgi', id=ekipman.id) }}"><i class="fas fa-info-circle"></i> Teknik Detaylar</a></li>
-                                    <li><a class="dropdown-item" href="{{ url_for('filo.duzelt', id=ekipman.id) }}"><i class="fas fa-edit"></i> Kartı Düzenle</a></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="confirmDelete({{ ekipman.id }}, '{{ ekipman.kod }}'); return false;"><i class="fas fa-trash-alt"></i> Makineyi Sil</a></li>
-                                </ul>
-                            </div>
-                        </td>
 
                         <td>
                             {% if ekipman.calisma_durumu == 'kirada' %}
